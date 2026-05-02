@@ -3,6 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const KEY_COINS_TOTAL = '@margo/coins.total';
 const KEY_DAILY_PLAY_PREFIX = '@margo/play.';
 const KEY_DAILY_TARGET_HIT_PREFIX = '@margo/dailyTargetHit.';
+const KEY_LEVEL_MASTERY_PREFIX = '@margo/level.mastery.';
+const KEY_LAST_LEVEL = '@margo/level.last';
 
 export async function loadCoinsTotal(): Promise<number> {
   const raw = await AsyncStorage.getItem(KEY_COINS_TOTAL);
@@ -37,4 +39,28 @@ export async function hasHitDailyTargetToday(date = todayKey()): Promise<boolean
 
 export async function markDailyTargetHit(date = todayKey()): Promise<void> {
   await AsyncStorage.setItem(KEY_DAILY_TARGET_HIT_PREFIX + date, '1');
+}
+
+/* ───────── Level mastery ───────── */
+
+/** How many ≥-threshold sessions this level has been completed in. */
+export async function loadLevelMastery(levelId: string): Promise<number> {
+  const raw = await AsyncStorage.getItem(KEY_LEVEL_MASTERY_PREFIX + levelId);
+  return raw ? Number(raw) || 0 : 0;
+}
+
+export async function bumpLevelMastery(levelId: string): Promise<number> {
+  const current = await loadLevelMastery(levelId);
+  const next = current + 1;
+  await AsyncStorage.setItem(KEY_LEVEL_MASTERY_PREFIX + levelId, String(next));
+  return next;
+}
+
+/** The level the child was last on, restored across launches. */
+export async function loadLastLevelId(): Promise<string | null> {
+  return AsyncStorage.getItem(KEY_LAST_LEVEL);
+}
+
+export async function saveLastLevelId(id: string): Promise<void> {
+  await AsyncStorage.setItem(KEY_LAST_LEVEL, id);
 }

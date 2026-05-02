@@ -1,28 +1,33 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import {
-  ROUNDS_PER_SESSION,
   COINS_PER_CORRECT,
+  MASTERY_CORRECT_THRESHOLD,
+  ROUNDS_PER_SESSION,
   THEME,
+  getLevel,
+  type Level,
   type VocabItem,
 } from '../content/v0';
 import { AudioButton } from '../src/components/AudioButton';
 import { CoinBadge } from '../src/components/CoinBadge';
 import { EndOfSessionScreen } from '../src/components/EndOfSessionScreen';
 import { GameTile } from '../src/components/GameTile';
+import { LevelSelect } from '../src/components/LevelSelect';
 import { SoftLockOverlay } from '../src/components/SoftLockOverlay';
 import { SunTimer } from '../src/components/SunTimer';
 import { buildSession, type Round } from '../src/game/rounds';
 import { useCoins } from '../src/hooks/useCoins';
 import { useDailyPlayTime } from '../src/hooks/useDailyPlayTime';
+import { useLevels } from '../src/hooks/useLevels';
 import { speakEnglish, speakGerman } from '../src/lib/audio';
-import { feedbackCorrect, feedbackWrong, feedbackTap } from '../src/lib/feedback';
+import { feedbackCorrect, feedbackTap, feedbackWrong } from '../src/lib/feedback';
 import { t } from '../src/lib/i18n';
+import { loadLastLevelId, saveLastLevelId } from '../src/lib/storage';
 
-type GameState = 'playing' | 'end-of-session' | 'soft-lock';
+type GameState = 'level-select' | 'playing' | 'end-of-session' | 'soft-lock';
 
 export default function Index() {
   return (
@@ -35,41 +40,65 @@ export default function Index() {
 }
 
 function Game() {
-  const { width, height } = useWindowDimensions();
+  const { width } = useWindowDimensions();
 
-  const [session, setSession] = useState<Round[]>(() => buildSession());
+  const [gameState, setGameState] = useState<GameState>('level-select');
+  const [level, setLevel] = useState<Level | null>(null);
+  const [session, setSession] = useState<Round[]>([]);
   const [roundIdx, setRoundIdx] = useState(0);
-  const [gameState, setGameState] = useState<GameState>('playing');
   const [flashTileId, setFlashTileId] = useState<string | null>(null);
   const [flashKind, setFlashKind] = useState<'correct' | 'wrong' | null>(null);
   const [awardKey, setAwardKey] = useState(0);
+  const [correctFirstTry, setCorrectFirstTry] = useState(0);
+  const [newlyUnlockedLevel, setNewlyUnlockedLevel] = useState<string | null>(null);
 
   const { total, session: sessionCoins, dailyTargetJustHit, ready: coinsReady, award, resetSession } = useCoins();
   const playEnabled = gameState === 'playing';
   const { seconds: playedSeconds, ready: timerReady, softLimitJustReached, acknowledgeSoftLimit } =
     useDailyPlayTime(playEnabled);
+  const { states: levelStates, ready: levelsReady, recordMastery } = useLevels();
 
   // Track which words have already played their German hint this session.
-  // useRef so mutations don't re-render and so the value survives across rounds.
   const hintedThisSessionRef = useRef<Set<string>>(new Set());
+  // Track which rounds have had a wrong tap (to compute mastery — first-try correct only).
+  const wrongTriesThisRoundRef = useRef(false);
 
-  // When the soft-limit threshold is crossed, surface the overlay (unless we're
-  // already in end-of-session).
   useEffect(() => {
     if (softLimitJustReached && gameState === 'playing') {
       setGameState('soft-lock');
     }
   }, [softLimitJustReached, gameState]);
 
+  // Restore last-played level on first load (so the dot count and selected
+  // level feel continuous across launches).
+  useEffect(() => {
+    loadLastLevelId().then(id => {
+      // Just for warmth — doesn't auto-start; she still picks via LevelSelect.
+      if (id) { /* no-op for v0.2; could prefocus the card later */ }
+    });
+  }, []);
+
   const round = session[roundIdx];
 
-  // Auto-speak the target word at the start of each round so she always
-  // hears what she's looking for.
   useEffect(() => {
     if (gameState !== 'playing' || !round) return;
     const id = setTimeout(() => speakEnglish(round.target.en), 350);
     return () => clearTimeout(id);
   }, [round, gameState]);
+
+  function handlePickLevel(levelId: string) {
+    const lvl = getLevel(levelId);
+    setLevel(lvl);
+    setSession(buildSession(lvl));
+    setRoundIdx(0);
+    setCorrectFirstTry(0);
+    resetSession();
+    hintedThisSessionRef.current.clear();
+    wrongTriesThisRoundRef.current = false;
+    setNewlyUnlockedLevel(null);
+    setGameState('playing');
+    saveLastLevelId(levelId).catch(() => {});
+  }
 
   function handleTilePress(tile: VocabItem) {
     if (!round) return;
@@ -79,17 +108,21 @@ function Game() {
       setAwardKey(k => k + 1);
       setFlashTileId(tile.id);
       setFlashKind('correct');
+      const wasFirstTry = !wrongTriesThisRoundRef.current;
+      if (wasFirstTry) setCorrectFirstTry(c => c + 1);
       setTimeout(() => {
         setFlashTileId(null);
         setFlashKind(null);
         if (roundIdx + 1 >= ROUNDS_PER_SESSION) {
-          setGameState('end-of-session');
+          finishSession(wasFirstTry ? correctFirstTry + 1 : correctFirstTry);
         } else {
           setRoundIdx(i => i + 1);
+          wrongTriesThisRoundRef.current = false;
         }
       }, 700);
     } else {
       feedbackWrong();
+      wrongTriesThisRoundRef.current = true;
       setFlashTileId(tile.id);
       setFlashKind('wrong');
       setTimeout(() => {
@@ -99,8 +132,18 @@ function Game() {
     }
   }
 
+  async function finishSession(finalCorrectFirstTry: number) {
+    if (level && finalCorrectFirstTry >= MASTERY_CORRECT_THRESHOLD) {
+      const unlocked = await recordMastery(level.id);
+      if (unlocked) {
+        const u = getLevel(unlocked);
+        setNewlyUnlockedLevel(u.name);
+      }
+    }
+    setGameState('end-of-session');
+  }
+
   function handleTileLongPress(tile: VocabItem) {
-    // Once-per-session-per-word German audio hint.
     if (hintedThisSessionRef.current.has(tile.id)) {
       feedbackTap();
       return;
@@ -110,11 +153,19 @@ function Game() {
   }
 
   function handlePlayAnother() {
-    setSession(buildSession());
+    if (!level) { setGameState('level-select'); return; }
+    setSession(buildSession(level));
     setRoundIdx(0);
+    setCorrectFirstTry(0);
     resetSession();
     hintedThisSessionRef.current.clear();
+    wrongTriesThisRoundRef.current = false;
+    setNewlyUnlockedLevel(null);
     setGameState('playing');
+  }
+
+  function handleChooseLevel() {
+    setGameState('level-select');
   }
 
   function handleSoftLockContinue() {
@@ -130,13 +181,21 @@ function Game() {
   // Tile sizing — landscape iPad: 5 tiles in a single row, generous gaps.
   const horizontalPadding = THEME.spacing.xl;
   const availableWidth = width - horizontalPadding * 2;
-  const tileGap = THEME.spacing.sm * 2; // GameTile.styles.wrap margin: sm on each side
+  const tileGap = THEME.spacing.sm * 2;
   const tileSize = Math.min(180, Math.floor((availableWidth - tileGap * 5) / 5));
 
-  if (!coinsReady || !timerReady) {
+  if (!coinsReady || !timerReady || !levelsReady) {
     return (
       <SafeAreaView style={styles.loading} edges={['top', 'bottom']}>
         <Text style={styles.loadingText}>…</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (gameState === 'level-select') {
+    return (
+      <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+        <LevelSelect states={levelStates} onPick={handlePickLevel} totalCoins={total} />
       </SafeAreaView>
     );
   }
@@ -146,7 +205,7 @@ function Game() {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.roundCounter}>
-            Round {Math.min(roundIdx + 1, ROUNDS_PER_SESSION)} / {ROUNDS_PER_SESSION}
+            {level?.name} · Round {Math.min(roundIdx + 1, ROUNDS_PER_SESSION)} / {ROUNDS_PER_SESSION}
           </Text>
           <Text style={styles.hint}>{t('long_press_hint')}</Text>
         </View>
@@ -159,30 +218,25 @@ function Game() {
       </View>
 
       {round && gameState !== 'end-of-session' && (
-        <Animated.View
-          key={`round-${roundIdx}`}
-          entering={FadeIn.duration(360)}
-          style={styles.center}
-        >
-          <Animated.View entering={FadeInDown.duration(420)} style={styles.targetCard}>
+        <View key={`round-${roundIdx}`} style={styles.center}>
+          <View style={styles.targetCard}>
             <Text style={styles.targetWord}>{round.target.en}</Text>
             <AudioButton onPress={() => speakEnglish(round.target.en)} />
-          </Animated.View>
+          </View>
 
           <View style={styles.tileRow}>
-            {round.tiles.map((tile, i) => (
+            {round.tiles.map((tile) => (
               <GameTile
                 key={`${roundIdx}-${tile.id}`}
                 item={tile}
                 size={tileSize}
-                enterDelay={120 + i * 90}
                 onPress={() => handleTilePress(tile)}
                 onLongPress={() => handleTileLongPress(tile)}
                 flash={flashTileId === tile.id ? flashKind : null}
               />
             ))}
           </View>
-        </Animated.View>
+        </View>
       )}
 
       {gameState === 'end-of-session' && (
@@ -190,7 +244,10 @@ function Game() {
           sessionCoins={sessionCoins}
           totalCoins={total}
           dailyTargetJustHit={dailyTargetJustHit}
+          levelLabel={level ? `${level.name} · ${correctFirstTry}/${ROUNDS_PER_SESSION} on first try` : undefined}
+          newLevelUnlocked={newlyUnlockedLevel}
           onPlayAnother={handlePlayAnother}
+          onChooseLevel={handleChooseLevel}
         />
       )}
 

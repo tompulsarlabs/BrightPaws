@@ -1,7 +1,7 @@
 /**
  * v0 content pack — Margo EN Tutor
  *
- * Single source of truth for the prototype: vocabulary, character roster,
+ * Single source of truth for the prototype: vocabulary, level structure,
  * theme tokens, copy strings. Swap this file (or fields within it) without
  * touching app code. See IP-NOTES.md re: Grogu placeholder.
  *
@@ -19,7 +19,7 @@ export type AssetRef =
   | { type: 'image'; source: ImageSourcePropType }
   | { type: 'placeholder'; label: string; bg: string; fg?: string };
 
-export type CharacterFamily = 'cat' | 'dachshund' | 'grogu' | 'world';
+export type CharacterFamily = 'cat' | 'dachshund' | 'grogu' | 'forest' | 'world';
 
 export interface VocabItem {
   /** stable id — never change after a word is in the wild (referenced by AsyncStorage). */
@@ -35,64 +35,140 @@ export interface VocabItem {
 }
 
 /**
- * v0 vocabulary — 12 items spanning the three character families plus
- * "world" (objects from their world). Visually distinct on a tile-grid so a
- * 7-year-old can tell them apart at a glance.
+ * Master vocabulary. Levels (below) cherry-pick from this list by id.
+ * Every word here is high-frequency English appropriate for a 7-year-old
+ * with daily passive English exposure. Distinct emoji per word so a tile
+ * grid is visually unambiguous.
  */
 export const VOCAB: VocabItem[] = [
-  { id: 'cat',       en: 'cat',       de: 'Katze',     family: 'cat',       art: { type: 'emoji', value: '🐱' } },
-  { id: 'fish',      en: 'fish',      de: 'Fisch',     family: 'cat',       art: { type: 'emoji', value: '🐟' } },
-  { id: 'milk',      en: 'milk',      de: 'Milch',     family: 'cat',       art: { type: 'emoji', value: '🥛' } },
-  { id: 'ball',      en: 'ball',      de: 'Ball',      family: 'cat',       art: { type: 'emoji', value: '⚽' } },
-  { id: 'dog',       en: 'dog',       de: 'Hund',      family: 'dachshund', art: { type: 'emoji', value: '🐶' } },
-  { id: 'sausage',   en: 'sausage',   de: 'Wurst',     family: 'dachshund', art: { type: 'emoji', value: '🌭' } },
-  { id: 'tree',      en: 'tree',      de: 'Baum',      family: 'dachshund', art: { type: 'emoji', value: '🌳' } },
-  { id: 'sun',       en: 'sun',       de: 'Sonne',     family: 'dachshund', art: { type: 'emoji', value: '☀️' } },
-  { id: 'grogu',     en: 'Grogu',     de: 'Grogu',     family: 'grogu',     art: { type: 'placeholder', label: 'Grogu', bg: '#9BC97A', fg: '#1F3D17' } },
-  { id: 'star',      en: 'star',      de: 'Stern',     family: 'grogu',     art: { type: 'emoji', value: '⭐' } },
-  { id: 'moon',      en: 'moon',      de: 'Mond',      family: 'grogu',     art: { type: 'emoji', value: '🌙' } },
-  { id: 'apple',     en: 'apple',     de: 'Apfel',     family: 'world',     art: { type: 'emoji', value: '🍎' } },
+  // Level 1 set — ten very high-frequency nouns.
+  { id: 'cat',     en: 'cat',     de: 'Katze',  family: 'cat',       art: { type: 'emoji', value: '🐱' } },
+  { id: 'dog',     en: 'dog',     de: 'Hund',   family: 'dachshund', art: { type: 'emoji', value: '🐶' } },
+  { id: 'mouse',   en: 'mouse',   de: 'Maus',   family: 'forest',    art: { type: 'emoji', value: '🐭' } },
+  { id: 'fish',    en: 'fish',    de: 'Fisch',  family: 'cat',       art: { type: 'emoji', value: '🐟' } },
+  { id: 'bird',    en: 'bird',    de: 'Vogel',  family: 'forest',    art: { type: 'emoji', value: '🐦' } },
+  { id: 'tree',    en: 'tree',    de: 'Baum',   family: 'forest',    art: { type: 'emoji', value: '🌳' } },
+  { id: 'sun',     en: 'sun',     de: 'Sonne',  family: 'world',     art: { type: 'emoji', value: '☀️' } },
+  { id: 'moon',    en: 'moon',    de: 'Mond',   family: 'grogu',     art: { type: 'emoji', value: '🌙' } },
+  { id: 'apple',   en: 'apple',   de: 'Apfel',  family: 'world',     art: { type: 'emoji', value: '🍎' } },
+  { id: 'milk',    en: 'milk',    de: 'Milch',  family: 'cat',       art: { type: 'emoji', value: '🥛' } },
+  { id: 'ball',    en: 'ball',    de: 'Ball',   family: 'cat',       art: { type: 'emoji', value: '⚽' } },
+  { id: 'book',    en: 'book',    de: 'Buch',   family: 'world',     art: { type: 'emoji', value: '📖' } },
+
+  // Level 2 set — more animals (Tom asked for these) + a few more objects.
+  { id: 'bear',    en: 'bear',    de: 'Bär',     family: 'forest',    art: { type: 'emoji', value: '🐻' } },
+  { id: 'fox',     en: 'fox',     de: 'Fuchs',   family: 'forest',    art: { type: 'emoji', value: '🦊' } },
+  { id: 'rabbit',  en: 'rabbit',  de: 'Hase',    family: 'forest',    art: { type: 'emoji', value: '🐰' } },
+  { id: 'owl',     en: 'owl',     de: 'Eule',    family: 'forest',    art: { type: 'emoji', value: '🦉' } },
+  { id: 'frog',    en: 'frog',    de: 'Frosch',  family: 'forest',    art: { type: 'emoji', value: '🐸' } },
+  { id: 'sausage', en: 'sausage', de: 'Wurst',   family: 'dachshund', art: { type: 'emoji', value: '🌭' } },
+  { id: 'grogu',   en: 'Grogu',   de: 'Grogu',   family: 'grogu',     art: { type: 'placeholder', label: 'Grogu', bg: '#9BC97A', fg: '#1F3D17' } },
+  { id: 'star',    en: 'star',    de: 'Stern',   family: 'grogu',     art: { type: 'emoji', value: '⭐' } },
+  { id: 'flower',  en: 'flower',  de: 'Blume',   family: 'world',     art: { type: 'emoji', value: '🌸' } },
+  { id: 'house',   en: 'house',   de: 'Haus',    family: 'world',     art: { type: 'emoji', value: '🏠' } },
+  { id: 'car',     en: 'car',     de: 'Auto',    family: 'world',     art: { type: 'emoji', value: '🚗' } },
+  { id: 'cake',    en: 'cake',    de: 'Kuchen',  family: 'world',     art: { type: 'emoji', value: '🍰' } },
 ];
 
-/** A round = one target word + N distractors drawn from the rest of VOCAB. */
+const VOCAB_BY_ID: Record<string, VocabItem> = Object.fromEntries(VOCAB.map(v => [v.id, v]));
+
+/** Look up a VocabItem by id; throws on miss so level data bugs surface loudly. */
+export function getVocab(id: string): VocabItem {
+  const v = VOCAB_BY_ID[id];
+  if (!v) throw new Error(`Unknown vocab id: ${id}`);
+  return v;
+}
+
+/* ───────────────────────── Levels ───────────────────────── */
+
+export interface Level {
+  /** stable id — referenced by AsyncStorage mastery records. */
+  id: string;
+  /** display name on the level select screen. */
+  name: string;
+  /** short tagline shown beneath the name. */
+  tagline: string;
+  /** emoji that represents this world on the level select tile. */
+  emoji: string;
+  /** background tint for this world's tile. */
+  bg: string;
+  /** vocab pool — round generator picks targets + distractors from here. */
+  vocabIds: string[];
+  /** id of a level that must be mastered (≥ MASTERY_THRESHOLD twice) to unlock this one. */
+  unlockAfter: string | null;
+}
+
+export const LEVELS: Level[] = [
+  {
+    id: 'forest',
+    name: 'Forest',
+    tagline: 'First words — animals & things',
+    emoji: '🌲',
+    bg: '#D5E8C0',
+    vocabIds: ['cat', 'dog', 'mouse', 'fish', 'bird', 'tree', 'sun', 'moon', 'apple', 'milk', 'ball', 'book'],
+    unlockAfter: null,
+  },
+  {
+    id: 'meadow',
+    name: 'Meadow',
+    tagline: 'More animals & a wider world',
+    emoji: '🌼',
+    bg: '#F5D6BC',
+    vocabIds: ['bear', 'fox', 'rabbit', 'owl', 'frog', 'sausage', 'grogu', 'star', 'flower', 'house', 'car', 'cake'],
+    unlockAfter: 'forest',
+  },
+];
+
+export function getLevel(id: string): Level {
+  const l = LEVELS.find(x => x.id === id);
+  if (!l) throw new Error(`Unknown level id: ${id}`);
+  return l;
+}
+
+/* ───────────────────────── Tunables ───────────────────────── */
+
 export const ROUND_TILE_COUNT = 5;
 export const ROUNDS_PER_SESSION = 10;
 export const COINS_PER_CORRECT = 1;
 export const DAILY_COIN_TARGET = 10;
-export const DAILY_SOFT_LIMIT_SECONDS = 30 * 60; // 30 minutes
+export const DAILY_SOFT_LIMIT_SECONDS = 30 * 60;
 
-/**
- * Theme tokens — pastel-forest-ish palette, soft shadows, large rounded
- * shapes, generous spacing. Tuned for a 7-year-old on iPad.
- */
+/** Mastery threshold per round-session: ≥ this many correct on first try counts as mastered. */
+export const MASTERY_CORRECT_THRESHOLD = 8;
+/** ...and we want this many mastered sessions on the current level before unlocking the next. */
+export const MASTERY_SESSIONS_REQUIRED = 2;
+
+/* ───────────────────────── Theme ───────────────────────── */
+
 export const THEME = {
   colors: {
-    /** Page background: warm cream that looks like aged paper. */
     bg: '#F4EFE2',
     bgAlt: '#FAF6EC',
 
-    /** Tile + card surfaces. */
     card: '#FFFFFF',
     cardBorder: '#E8DFC9',
     cardShadow: 'rgba(60, 40, 10, 0.10)',
 
-    /** Primary accent — a confident sage green. */
     accent: '#5A8C5A',
     accentSoft: '#C7DDC4',
 
-    /** Secondary accent for coins and reward signals. */
     coin: '#E0A93B',
     coinSoft: '#FBE7B8',
 
-    /** Text. */
+    /** Voice / repeat-after-me action — warm rust so it doesn't compete with audio-out green. */
+    voice: '#C25A3A',
+    voiceSoft: '#F1CFC3',
+    voiceLive: '#E63946',
+
     text: '#2E2A1F',
     textMuted: '#6E6852',
 
-    /** Per-family bands (for subtle tinted borders or backdrops). */
-    familyCat: '#E9D5F0',       // soft lavender
-    familyDachshund: '#F5D6BC', // warm peach
-    familyGrogu: '#D5E8C0',     // green-tea
-    familyWorld: '#E5E5DA',     // neutral
+    /** Per-family band tints (for the underline beneath each tile). */
+    familyCat: '#E9D5F0',
+    familyDachshund: '#F5D6BC',
+    familyGrogu: '#D5E8C0',
+    familyForest: '#CFE7CE',
+    familyWorld: '#E5E5DA',
   },
   radius: {
     tile: 28,
@@ -107,7 +183,6 @@ export const THEME = {
     xl: 44,
   },
   type: {
-    /** Massive headline for the target word — must read across the room. */
     target: { fontSize: 88, fontWeight: '800' as const, letterSpacing: -1 },
     title:  { fontSize: 32, fontWeight: '700' as const },
     body:   { fontSize: 20, fontWeight: '500' as const },
@@ -115,13 +190,13 @@ export const THEME = {
   },
 } as const;
 
-/**
- * Copy strings — single English locale for v0. Wrapped through the t()
- * helper in src/lib/i18n.ts so we can wire real i18n without code churn
- * once Tom decides on bilingual scaffolding strategy.
- */
+/* ───────────────────────── Copy ───────────────────────── */
+
 export const STRINGS = {
   audio_button_label: 'Tap to hear',
+  voice_button_idle: 'Now you say it',
+  voice_button_recording: 'Listening…',
+  voice_button_playing: 'Nice!',
   long_press_hint: 'Hold an animal for a German clue',
   coins_label: 'coins',
   end_of_session_title: 'Great round!',
@@ -134,6 +209,9 @@ export const STRINGS = {
   soft_limit_body: "Let's give your eyes a little rest.",
   soft_limit_continue: 'One more round',
   soft_limit_dismiss: 'All done for today',
+  level_select_title: 'Pick a world',
+  level_locked: 'Master the previous world to open this one',
+  mic_permission_blocked: 'Tap is fine — voice needs microphone',
 } as const;
 
 export type StringKey = keyof typeof STRINGS;

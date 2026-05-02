@@ -1,5 +1,4 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 import { DAILY_COIN_TARGET, THEME } from '../../content/v0';
 import { t } from '../lib/i18n';
 
@@ -7,37 +6,70 @@ interface Props {
   sessionCoins: number;
   totalCoins: number;
   dailyTargetJustHit: boolean;
+  levelLabel?: string;
+  newLevelUnlocked?: string | null;
   onPlayAnother: () => void;
+  onChooseLevel?: () => void;
 }
 
-export function EndOfSessionScreen({ sessionCoins, totalCoins, dailyTargetJustHit, onPlayAnother }: Props) {
+// Plain Views, no reanimated entering — same fix as GameTile, see comment there.
+export function EndOfSessionScreen({
+  sessionCoins,
+  totalCoins,
+  dailyTargetJustHit,
+  levelLabel,
+  newLevelUnlocked,
+  onPlayAnother,
+  onChooseLevel,
+}: Props) {
   const subtitleKey = sessionCoins === 1 ? 'end_of_session_subtitle_one' : 'end_of_session_subtitle_many';
 
   return (
-    <Animated.View entering={FadeIn.duration(280)} style={styles.wrap}>
-      <Animated.View entering={ZoomIn.delay(100).duration(420)} style={styles.card}>
+    <View style={styles.wrap}>
+      <View style={styles.card}>
         <Text style={styles.title}>{t('end_of_session_title')}</Text>
+        {levelLabel && <Text style={styles.levelLabel}>{levelLabel}</Text>}
         <Text style={styles.coinHero}>🪙 +{sessionCoins}</Text>
         <Text style={styles.subtitle}>{t(subtitleKey, sessionCoins)}</Text>
         <Text style={styles.total}>{t('end_of_session_total', totalCoins, t('coins_label'))}</Text>
 
         {dailyTargetJustHit && (
-          <Animated.View entering={ZoomIn.delay(450).duration(420)} style={styles.targetBanner}>
+          <View style={styles.targetBanner}>
             <Text style={styles.targetText}>🎉 {t('daily_target_hit', DAILY_COIN_TARGET)}</Text>
-          </Animated.View>
+          </View>
         )}
 
-        <Pressable
-          onPress={onPlayAnother}
-          style={({ pressed }) => [
-            styles.cta,
-            { transform: [{ scale: pressed ? 0.97 : 1 }] },
-          ]}
-        >
-          <Text style={styles.ctaText}>{t('play_another')}</Text>
-        </Pressable>
-      </Animated.View>
-    </Animated.View>
+        {newLevelUnlocked && (
+          <View style={styles.unlockBanner}>
+            <Text style={styles.unlockText}>✨ New world unlocked: {newLevelUnlocked}</Text>
+          </View>
+        )}
+
+        <View style={styles.ctaRow}>
+          {onChooseLevel && (
+            <Pressable
+              onPress={onChooseLevel}
+              style={({ pressed }) => [
+                styles.cta,
+                styles.ctaSecondary,
+                { transform: [{ scale: pressed ? 0.97 : 1 }] },
+              ]}
+            >
+              <Text style={styles.ctaSecondaryText}>Choose world</Text>
+            </Pressable>
+          )}
+          <Pressable
+            onPress={onPlayAnother}
+            style={({ pressed }) => [
+              styles.cta,
+              { transform: [{ scale: pressed ? 0.97 : 1 }] },
+            ]}
+          >
+            <Text style={styles.ctaText}>{t('play_another')}</Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -67,6 +99,13 @@ const styles = StyleSheet.create({
     fontSize: 44,
     fontWeight: '800',
     color: THEME.colors.text,
+    marginBottom: THEME.spacing.xs,
+  },
+  levelLabel: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: THEME.colors.textMuted,
+    letterSpacing: 0.4,
     marginBottom: THEME.spacing.md,
   },
   coinHero: {
@@ -100,6 +139,24 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: THEME.colors.text,
   },
+  unlockBanner: {
+    backgroundColor: THEME.colors.accentSoft,
+    paddingHorizontal: THEME.spacing.lg,
+    paddingVertical: THEME.spacing.sm,
+    borderRadius: THEME.radius.pill,
+    marginBottom: THEME.spacing.lg,
+    borderWidth: 2,
+    borderColor: THEME.colors.accent,
+  },
+  unlockText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: THEME.colors.text,
+  },
+  ctaRow: {
+    flexDirection: 'row',
+    gap: THEME.spacing.md,
+  },
   cta: {
     backgroundColor: THEME.colors.accent,
     paddingHorizontal: THEME.spacing.xl,
@@ -110,6 +167,18 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 14,
     elevation: 8,
+  },
+  ctaSecondary: {
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: THEME.colors.cardBorder,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  ctaSecondaryText: {
+    color: THEME.colors.text,
+    fontSize: 20,
+    fontWeight: '700',
   },
   ctaText: {
     color: '#fff',
