@@ -16,6 +16,7 @@ import { CoinBadge } from '../src/components/CoinBadge';
 import { EndOfSessionScreen } from '../src/components/EndOfSessionScreen';
 import { GameTile } from '../src/components/GameTile';
 import { LevelSelect } from '../src/components/LevelSelect';
+import { RepeatButton } from '../src/components/RepeatButton';
 import { SoftLockOverlay } from '../src/components/SoftLockOverlay';
 import { SunTimer } from '../src/components/SunTimer';
 import { buildSession, type Round } from '../src/game/rounds';
@@ -222,6 +223,7 @@ function Game() {
           <View style={styles.targetCard}>
             <Text style={styles.targetWord}>{round.target.en}</Text>
             <AudioButton onPress={() => speakEnglish(round.target.en)} />
+            <RepeatButton resetKey={`${level?.id ?? 'x'}-${roundIdx}`} />
           </View>
 
           <View style={styles.tileRow}>
