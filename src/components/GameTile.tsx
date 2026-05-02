@@ -3,7 +3,6 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
-  withDelay,
   withSequence,
   withSpring,
   withTiming,
@@ -14,10 +13,6 @@ import { AssetView } from './AssetView';
 interface Props {
   item: VocabItem;
   size: number;
-  /**
-   * Delay (ms) before this tile fades/zooms in — staggered entrance per row.
-   */
-  enterDelay: number;
   onPress: () => void;
   onLongPress: () => void;
   /** When set, the tile flashes a coloured border for feedback. */
@@ -29,17 +24,15 @@ const FAMILY_TINTS = {
   dachshund: THEME.colors.familyDachshund,
   grogu: THEME.colors.familyGrogu,
   world: THEME.colors.familyWorld,
+  forest: THEME.colors.familyForest,
 } as const;
 
-export function GameTile({ item, size, enterDelay, onPress, onLongPress, flash }: Props) {
-  const scale = useSharedValue(0.7);
-  const opacity = useSharedValue(0);
+// Initial opacity is 1 (not 0) — reanimated worklets occasionally fail to
+// tick on iOS Expo Go (SDK 54 + new arch + react compiler), and a stuck
+// opacity of 0 hides the whole tile row. Tile entrance polish was the
+// reanimated bring-up-from-0 we deliberately removed.
+export function GameTile({ item, size, onPress, onLongPress, flash }: Props) {
   const flashScale = useSharedValue(1);
-
-  useEffect(() => {
-    scale.value = withDelay(enterDelay, withSpring(1, { damping: 14, stiffness: 160 }));
-    opacity.value = withDelay(enterDelay, withTiming(1, { duration: 280 }));
-  }, [enterDelay, scale, opacity]);
 
   useEffect(() => {
     if (flash === 'correct') {
@@ -56,8 +49,7 @@ export function GameTile({ item, size, enterDelay, onPress, onLongPress, flash }
   }, [flash, flashScale]);
 
   const containerStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value * flashScale.value }],
-    opacity: opacity.value,
+    transform: [{ scale: flashScale.value }],
   }));
 
   const tint = FAMILY_TINTS[item.family];

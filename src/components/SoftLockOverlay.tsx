@@ -1,5 +1,4 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 import { THEME } from '../../content/v0';
 import { t } from '../lib/i18n';
 
@@ -11,11 +10,13 @@ interface Props {
 /**
  * Soft 30-minute nudge. Two equal-weight choices: "one more round" vs
  * "all done". No countdown timer that auto-dismisses; she controls it.
+ *
+ * Plain Views, no reanimated entering — same fix as GameTile.
  */
 export function SoftLockOverlay({ onContinue, onDismiss }: Props) {
   return (
-    <Animated.View entering={FadeIn.duration(360)} style={styles.wrap}>
-      <Animated.View entering={ZoomIn.delay(100).duration(420)} style={styles.card}>
+    <View style={styles.wrap}>
+      <View style={styles.card}>
         <Text style={styles.eye}>🌅</Text>
         <Text style={styles.title}>{t('soft_limit_title')}</Text>
         <Text style={styles.body}>{t('soft_limit_body')}</Text>
@@ -42,8 +43,8 @@ export function SoftLockOverlay({ onContinue, onDismiss }: Props) {
             <Text style={styles.btnPrimaryText}>{t('soft_limit_dismiss')}</Text>
           </Pressable>
         </View>
-      </Animated.View>
-    </Animated.View>
+      </View>
+    </View>
   );
 }
 
