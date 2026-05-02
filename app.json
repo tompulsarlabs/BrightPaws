@@ -3,14 +3,13 @@
     "name": "Margo EN Tutor",
     "slug": "margo-en-tutor",
     "version": "0.1.0",
-    "orientation": "landscape",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "margoentutor",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "isTabletOnly": true,
       "requireFullScreen": true
     },
     "android": {

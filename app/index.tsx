@@ -127,31 +127,40 @@ function Game() {
     setGameState('end-of-session');
   }
 
-  // Tile sizing — landscape iPad: 5 tiles in a single row, generous gaps.
-  const horizontalPadding = THEME.spacing.xl;
+  // Responsive sizing — flex on phone, fixed-ish on iPad.
+  const isNarrow = width < 600;
+  const isShort = height < 500; // iPhone landscape
+  const horizontalPadding = isNarrow ? THEME.spacing.md : THEME.spacing.xl;
   const availableWidth = width - horizontalPadding * 2;
   const tileGap = THEME.spacing.sm * 2; // GameTile.styles.wrap margin: sm on each side
-  const tileSize = Math.min(180, Math.floor((availableWidth - tileGap * 5) / 5));
+  // Tiles must clear Apple's 44pt min tap target. flexWrap on the row will
+  // wrap to a second line if 5 don't fit (e.g. cramped iPhone portrait).
+  const tileSize = Math.max(
+    44,
+    Math.min(isShort ? 110 : 180, Math.floor((availableWidth - tileGap * 5) / 5)),
+  );
+  const targetWordSize = isNarrow ? 56 : 88;
+  const sunTimerWidth = Math.min(360, Math.max(110, width * 0.32));
 
   if (!coinsReady || !timerReady) {
     return (
-      <SafeAreaView style={styles.loading} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.loading} edges={['top', 'bottom', 'left', 'right']}>
         <Text style={styles.loadingText}>…</Text>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-      <View style={styles.header}>
+    <SafeAreaView style={styles.root} edges={['top', 'bottom', 'left', 'right']}>
+      <View style={[styles.header, isNarrow && styles.headerNarrow]}>
         <View style={styles.headerLeft}>
           <Text style={styles.roundCounter}>
             Round {Math.min(roundIdx + 1, ROUNDS_PER_SESSION)} / {ROUNDS_PER_SESSION}
           </Text>
-          <Text style={styles.hint}>{t('long_press_hint')}</Text>
+          {!isNarrow && <Text style={styles.hint}>{t('long_press_hint')}</Text>}
         </View>
         <View style={styles.headerCenter}>
-          <SunTimer seconds={playedSeconds} width={Math.min(360, width * 0.32)} />
+          <SunTimer seconds={playedSeconds} width={sunTimerWidth} />
         </View>
         <View style={styles.headerRight}>
           <CoinBadge total={total} awardKey={awardKey} />
@@ -162,10 +171,19 @@ function Game() {
         <Animated.View
           key={`round-${roundIdx}`}
           entering={FadeIn.duration(360)}
-          style={styles.center}
+          style={[styles.center, isNarrow && styles.centerNarrow]}
         >
-          <Animated.View entering={FadeInDown.duration(420)} style={styles.targetCard}>
-            <Text style={styles.targetWord}>{round.target.en}</Text>
+          <Animated.View
+            entering={FadeInDown.duration(420)}
+            style={[styles.targetCard, isNarrow && styles.targetCardNarrow]}
+          >
+            <Text
+              style={[styles.targetWord, { fontSize: targetWordSize }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              {round.target.en}
+            </Text>
             <AudioButton onPress={() => speakEnglish(round.target.en)} />
           </Animated.View>
 
@@ -226,6 +244,11 @@ const styles = StyleSheet.create({
     paddingVertical: THEME.spacing.md,
     gap: THEME.spacing.md,
   },
+  headerNarrow: {
+    paddingHorizontal: THEME.spacing.md,
+    paddingVertical: THEME.spacing.sm,
+    gap: THEME.spacing.sm,
+  },
   headerLeft: { flex: 1, alignItems: 'flex-start' },
   headerCenter: { alignItems: 'center', justifyContent: 'center' },
   headerRight: { flex: 1, alignItems: 'flex-end' },
@@ -248,9 +271,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: THEME.spacing.xl,
     paddingBottom: THEME.spacing.lg,
   },
+  centerNarrow: {
+    paddingHorizontal: THEME.spacing.md,
+    paddingBottom: THEME.spacing.sm,
+  },
   targetCard: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    maxWidth: '100%',
     gap: THEME.spacing.xl,
     backgroundColor: THEME.colors.card,
     paddingHorizontal: THEME.spacing.xl + 12,
@@ -264,16 +294,22 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     elevation: 6,
   },
+  targetCardNarrow: {
+    gap: THEME.spacing.md,
+    paddingHorizontal: THEME.spacing.lg,
+    paddingVertical: THEME.spacing.md,
+  },
   targetWord: {
-    fontSize: 88,
     fontWeight: '800',
     color: THEME.colors.text,
     letterSpacing: -1,
+    flexShrink: 1,
   },
   tileRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     flexWrap: 'wrap',
+    maxWidth: '100%',
   },
 });
