@@ -1,5 +1,5 @@
 /**
- * v0 content pack — Margo EN Tutor
+ * v0 content pack — Margaux EN Tutor
  *
  * Single source of truth for the prototype: vocabulary, level structure,
  * theme tokens, copy strings. Swap this file (or fields within it) without

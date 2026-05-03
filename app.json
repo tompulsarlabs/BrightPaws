@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Margo EN Tutor",
+    "name": "Margaux EN Tutor",
     "slug": "margo-en-tutor",
     "version": "0.1.0",
     "orientation": "landscape",
@@ -44,7 +44,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Tap-to-repeat lets Margo hear herself say the words."
+          "microphonePermission": "Tap-to-repeat lets Margaux hear herself say the words."
         }
       ]
     ],

@@ -5,7 +5,7 @@
 The v0 theme uses **Grogu** (a.k.a. "Baby Yoda") as one of three placeholder character families alongside cats and sausage dogs. Grogu is owned by Lucasfilm / The Walt Disney Company.
 
 ### Current scope (safe)
-- **Personal use only.** App distributed to Margo's iPad via TestFlight, joined only by Tom + immediate family.
+- **Personal use only.** App distributed to Margaux's iPad via TestFlight, joined only by Tom + immediate family.
 - Not on the App Store. Not distributed to other families. No public web. Not monetised.
 - Under U.S. fair-use doctrine and analogous EU exceptions, private personal use of a copyrighted character in a non-distributed context is effectively unenforceable and not the kind of thing rightsholders pursue.
 
