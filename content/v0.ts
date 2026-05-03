@@ -81,6 +81,8 @@ export function getVocab(id: string): VocabItem {
 
 /* ───────────────────────── Levels ───────────────────────── */
 
+export type LevelMode = 'tap-match' | 'adventure';
+
 export interface Level {
   /** stable id — referenced by AsyncStorage mastery records. */
   id: string;
@@ -96,6 +98,8 @@ export interface Level {
   vocabIds: string[];
   /** id of a level that must be mastered (≥ MASTERY_THRESHOLD twice) to unlock this one. */
   unlockAfter: string | null;
+  /** Game mechanic for this level. Defaults to 'tap-match'. */
+  mode?: LevelMode;
 }
 
 export const LEVELS: Level[] = [
@@ -117,6 +121,17 @@ export const LEVELS: Level[] = [
     vocabIds: ['bear', 'fox', 'rabbit', 'owl', 'frog', 'sausage', 'grogu', 'star', 'flower', 'house', 'car', 'cake'],
     unlockAfter: 'forest',
   },
+  {
+    id: 'adventure',
+    name: 'Adventure',
+    tagline: 'Walk the cat to the right word',
+    emoji: '🐱',
+    bg: '#FCE8B8',
+    // Reuses the Forest pool so it works on day one without prerequisite mastery.
+    vocabIds: ['cat', 'dog', 'mouse', 'fish', 'bird', 'tree', 'sun', 'moon', 'apple', 'milk', 'ball', 'book'],
+    unlockAfter: null,
+    mode: 'adventure',
+  },
 ];
 
 export function getLevel(id: string): Level {
@@ -129,6 +144,8 @@ export function getLevel(id: string): Level {
 
 export const ROUND_TILE_COUNT = 5;
 export const ROUNDS_PER_SESSION = 10;
+/** Adventure mode is shorter — exploration eats more time per round. */
+export const ADVENTURE_ROUNDS_PER_SESSION = 5;
 export const COINS_PER_CORRECT = 1;
 export const DAILY_COIN_TARGET = 10;
 export const DAILY_SOFT_LIMIT_SECONDS = 30 * 60;
@@ -212,6 +229,8 @@ export const STRINGS = {
   level_select_title: 'Pick a world',
   level_locked: 'Master the previous world to open this one',
   mic_permission_blocked: 'Tap is fine — voice needs microphone',
+  adventure_prompt: 'Find the %s',
+  adventure_hint: 'Tap a tile — the cat will walk to it',
 } as const;
 
 export type StringKey = keyof typeof STRINGS;

@@ -3,6 +3,7 @@ import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import {
+  ADVENTURE_ROUNDS_PER_SESSION,
   COINS_PER_CORRECT,
   MASTERY_CORRECT_THRESHOLD,
   ROUNDS_PER_SESSION,
@@ -11,6 +12,7 @@ import {
   type Level,
   type VocabItem,
 } from '../content/v0';
+import { AdventureWorld } from '../src/components/AdventureWorld';
 import { AudioButton } from '../src/components/AudioButton';
 import { CoinBadge } from '../src/components/CoinBadge';
 import { EndOfSessionScreen } from '../src/components/EndOfSessionScreen';
@@ -83,14 +85,16 @@ function Game() {
 
   useEffect(() => {
     if (gameState !== 'playing' || !round) return;
+    if (level?.mode === 'adventure') return; // Adventure handles its own audio.
     const id = setTimeout(() => speakEnglish(round.target.en), 350);
     return () => clearTimeout(id);
-  }, [round, gameState]);
+  }, [round, gameState, level]);
 
   function handlePickLevel(levelId: string) {
     const lvl = getLevel(levelId);
     setLevel(lvl);
-    setSession(buildSession(lvl));
+    // Adventure mode owns its own round flow; tap-match uses session[].
+    setSession(lvl.mode === 'adventure' ? [] : buildSession(lvl));
     setRoundIdx(0);
     setCorrectFirstTry(0);
     resetSession();
@@ -99,6 +103,17 @@ function Game() {
     setNewlyUnlockedLevel(null);
     setGameState('playing');
     saveLastLevelId(levelId).catch(() => {});
+  }
+
+  function handleAdventureAward() {
+    award(COINS_PER_CORRECT);
+    setAwardKey(k => k + 1);
+  }
+
+  function handleAdventureComplete(adventureCorrectFirstTry: number) {
+    setCorrectFirstTry(adventureCorrectFirstTry);
+    // Adventure mode is "play for fun" — doesn't drive mastery / unlocks.
+    setGameState('end-of-session');
   }
 
   function handleTilePress(tile: VocabItem) {
@@ -155,7 +170,7 @@ function Game() {
 
   function handlePlayAnother() {
     if (!level) { setGameState('level-select'); return; }
-    setSession(buildSession(level));
+    setSession(level.mode === 'adventure' ? [] : buildSession(level));
     setRoundIdx(0);
     setCorrectFirstTry(0);
     resetSession();
@@ -201,14 +216,17 @@ function Game() {
     );
   }
 
+  const isAdventure = level?.mode === 'adventure';
+
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.roundCounter}>
-            {level?.name} · Round {Math.min(roundIdx + 1, ROUNDS_PER_SESSION)} / {ROUNDS_PER_SESSION}
+            {level?.name}
+            {!isAdventure && ` · Round ${Math.min(roundIdx + 1, ROUNDS_PER_SESSION)} / ${ROUNDS_PER_SESSION}`}
           </Text>
-          <Text style={styles.hint}>{t('long_press_hint')}</Text>
+          {!isAdventure && <Text style={styles.hint}>{t('long_press_hint')}</Text>}
         </View>
         <View style={styles.headerCenter}>
           <SunTimer seconds={playedSeconds} width={Math.min(360, width * 0.32)} />
@@ -218,7 +236,15 @@ function Game() {
         </View>
       </View>
 
-      {round && gameState !== 'end-of-session' && (
+      {isAdventure && level && gameState === 'playing' && (
+        <AdventureWorld
+          level={level}
+          onAward={handleAdventureAward}
+          onSessionComplete={handleAdventureComplete}
+        />
+      )}
+
+      {!isAdventure && round && gameState !== 'end-of-session' && (
         <View key={`round-${roundIdx}`} style={styles.center}>
           <View style={styles.targetCard}>
             <Text style={styles.targetWord}>{round.target.en}</Text>
@@ -246,7 +272,11 @@ function Game() {
           sessionCoins={sessionCoins}
           totalCoins={total}
           dailyTargetJustHit={dailyTargetJustHit}
-          levelLabel={level ? `${level.name} · ${correctFirstTry}/${ROUNDS_PER_SESSION} on first try` : undefined}
+          levelLabel={
+            level
+              ? `${level.name} · ${correctFirstTry}/${level.mode === 'adventure' ? ADVENTURE_ROUNDS_PER_SESSION : ROUNDS_PER_SESSION} on first try`
+              : undefined
+          }
           newLevelUnlocked={newlyUnlockedLevel}
           onPlayAnother={handlePlayAnother}
           onChooseLevel={handleChooseLevel}
