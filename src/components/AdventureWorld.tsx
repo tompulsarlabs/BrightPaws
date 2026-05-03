@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
+  Easing,
   useAnimatedStyle,
   useSharedValue,
-  withRepeat,
+  withDelay,
   withSequence,
   withSpring,
   withTiming,
@@ -34,10 +35,37 @@ interface PlacedTile {
   fy: number;
 }
 
+interface Scenario {
+  id: string;
+  name: string;
+  /** Emoji shown in the round-intro title. */
+  emoji: string;
+  /** World background tint. */
+  bg: string;
+  /** Decorative scenery emoji palette for this scene. */
+  scenery: string[];
+  /** Number of decorations to scatter. */
+  sceneryCount: number;
+  /** What the cat has to hop over to reach a tile. */
+  obstacle: { emoji: string; size: number };
+}
+
+/**
+ * Each round picks a different scenario for narrative variety. The cat,
+ * tiles, and matching mechanic stay the same — only the world's mood
+ * (background tint, scenery palette, obstacle type) changes.
+ */
+const SCENARIOS: Scenario[] = [
+  { id: 'forest', name: 'Forest',  emoji: '🌲', bg: '#E5EFD7', scenery: ['🌳', '🌲', '🌿', '🍄'], sceneryCount: 14, obstacle: { emoji: '🪵', size: 64 } },
+  { id: 'meadow', name: 'Meadow',  emoji: '🌼', bg: '#FBF3CC', scenery: ['🌼', '🌸', '🌾', '🦋'], sceneryCount: 16, obstacle: { emoji: '🪨', size: 54 } },
+  { id: 'beach',  name: 'Beach',   emoji: '🏖️', bg: '#FCE3A8', scenery: ['🐚', '⭐', '🌴', '🪸'], sceneryCount: 12, obstacle: { emoji: '🪨', size: 56 } },
+  { id: 'snow',   name: 'Snowfield', emoji: '❄️', bg: '#E0ECF3', scenery: ['❄️', '🌨️', '🌲', '🐧'], sceneryCount: 16, obstacle: { emoji: '⛄', size: 64 } },
+  { id: 'night',  name: 'Starry Night', emoji: '🌙', bg: '#D7D2EE', scenery: ['⭐', '✨', '🌙', '🦉'], sceneryCount: 14, obstacle: { emoji: '🪨', size: 50 } },
+];
+
 const CAT_SIZE = 88;
 const TILE_SIZE = 110;
-const WALK_SPEED_PX_PER_S = 360; // walking pace — feels deliberate, not snappy
-const SCENERY_EMOJI = ['🌳', '🌲', '🌿', '🪨', '🍄', '🌾'];
+const WALK_SPEED_PX_PER_S = 360;
 
 /**
  * Top-down "adventure" mode. Cat starts at centre, child taps a word tile
@@ -57,20 +85,33 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
   const pool = useMemo(() => level.vocabIds.map(getVocab), [level]);
 
   const [round, setRound] = useState(0);
+  const [scenario, setScenario] = useState<Scenario>(() => SCENARIOS[Math.floor(Math.random() * SCENARIOS.length)]);
   const [target, setTarget] = useState<VocabItem>(() => pickTarget(pool, []));
   const [tiles, setTiles] = useState<PlacedTile[]>(() => placeTiles(pool, target, worldW, worldH));
-  const [scenery, setScenery] = useState(() => placeScenery(worldW, worldH));
+  const [scenery, setScenery] = useState(() => placeScenery(scenario, worldW, worldH));
+  const [obstacle, setObstacle] = useState(() => placeObstacle(scenario, worldW, worldH));
   const [correctFirstTry, setCorrectFirstTry] = useState(0);
   const [shakeId, setShakeId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const wrongTriesRef = useRef(false);
   const lastTargetIdsRef = useRef<string[]>([target.id]);
+  const lastScenarioIdRef = useRef<string>(scenario.id);
 
   // Cat position — start at world centre.
   const catX = useSharedValue(worldW / 2 - CAT_SIZE / 2);
   const catY = useSharedValue(worldH / 2 - CAT_SIZE / 2);
   const facing = useSharedValue(1); // 1 = right, -1 = left
-  const bob = useSharedValue(0);
+  const hopY = useSharedValue(0); // additional Y offset for hop-over-obstacle arcs
+
+  // Scenario intro title — fades in then out at round start.
+  const titleOpacity = useSharedValue(0);
+  useEffect(() => {
+    titleOpacity.value = withSequence(
+      withTiming(1, { duration: 350 }),
+      withTiming(1, { duration: 900 }),
+      withTiming(0, { duration: 500 }),
+    );
+  }, [scenario, round, titleOpacity]);
 
   // Re-centre cat if viewport size changes mid-game (rare).
   useEffect(() => {
@@ -92,10 +133,14 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
     }
     const nextTarget = pickTarget(pool, lastTargetIdsRef.current);
     lastTargetIdsRef.current = [...lastTargetIdsRef.current.slice(-3), nextTarget.id];
+    const nextScenario = pickScenario(lastScenarioIdRef.current);
+    lastScenarioIdRef.current = nextScenario.id;
     setRound(nextRound);
+    setScenario(nextScenario);
     setTarget(nextTarget);
     setTiles(placeTiles(pool, nextTarget, worldW, worldH));
-    setScenery(placeScenery(worldW, worldH));
+    setScenery(placeScenery(nextScenario, worldW, worldH));
+    setObstacle(placeObstacle(nextScenario, worldW, worldH));
     wrongTriesRef.current = false;
   }
 
@@ -110,20 +155,45 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
     setBusy(true);
     catX.value = withTiming(targetX, { duration: durationMs });
     catY.value = withTiming(targetY, { duration: durationMs }, (finished) => {
-      if (finished && onArrive) {
-        // Hop back to JS thread to mutate React state.
-        // (reanimated callbacks run on the UI thread.)
-        runOnJSDelay(onArrive, 0);
-      }
+      if (finished && onArrive) runOnJSDelay(onArrive, 0);
     });
-    bob.value = withRepeat(
-      withSequence(
-        withTiming(-6, { duration: 220 }),
-        withTiming(0, { duration: 220 }),
-      ),
-      Math.ceil(durationMs / 440),
-      false,
-    );
+
+    // Compute whether the cat's path crosses the obstacle. If so, schedule
+    // a hop arc on hopY at the moment the cat reaches the obstacle's x.
+    const obsCx = obstacle.x;
+    const obsCy = obstacle.y;
+    const catCxFrom = fromX + CAT_SIZE / 2;
+    const catCyFrom = fromY + CAT_SIZE / 2;
+    const catCxTo = targetX + CAT_SIZE / 2;
+    const catCyTo = targetY + CAT_SIZE / 2;
+    let hopAtMs: number | null = null;
+    if (Math.abs(catCxTo - catCxFrom) > 4) {
+      const f = (obsCx - catCxFrom) / (catCxTo - catCxFrom);
+      if (f > 0.06 && f < 0.94) {
+        const catCyAtCrossing = catCyFrom + (catCyTo - catCyFrom) * f;
+        const verticalGap = Math.abs(catCyAtCrossing - obsCy);
+        if (verticalGap < (obstacle.size / 2 + CAT_SIZE / 2 + 24)) {
+          hopAtMs = Math.max(0, f * durationMs - 140);
+        }
+      }
+    }
+    if (hopAtMs !== null) {
+      const hopHeight = -56;
+      hopY.value = withDelay(hopAtMs, withSequence(
+        withTiming(hopHeight, { duration: 200, easing: Easing.out(Easing.quad) }),
+        withTiming(0, { duration: 240, easing: Easing.in(Easing.quad) }),
+      ));
+    } else {
+      // Subtle walking bob — no obstacle to hop. Use a single half-sine
+      // so we don't overlap with a hop on the next walk.
+      const bobs = Math.max(2, Math.floor(durationMs / 220));
+      hopY.value = withSequence(
+        ...Array.from({ length: bobs }, (_, i) =>
+          withTiming(i % 2 === 0 ? -5 : 0, { duration: 220 }),
+        ),
+        withTiming(0, { duration: 60 }),
+      );
+    }
   }
 
   function handleTilePress(placed: PlacedTile) {
@@ -164,10 +234,12 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
   const catStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: catX.value },
-      { translateY: catY.value + bob.value },
+      { translateY: catY.value + hopY.value },
       { scaleX: facing.value },
     ],
   }));
+
+  const titleStyle = useAnimatedStyle(() => ({ opacity: titleOpacity.value }));
 
   return (
     <View style={styles.root}>
@@ -184,8 +256,11 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
         <Text style={styles.hint}>{t('adventure_hint')}</Text>
       </View>
 
-      {/* World — scenery, tiles, cat */}
-      <View style={[styles.world, { width: worldW, height: worldH }]} pointerEvents="box-none">
+      {/* World — scenery, tiles, obstacle, cat */}
+      <View
+        style={[styles.world, { width: worldW, height: worldH, backgroundColor: scenario.bg }]}
+        pointerEvents="box-none"
+      >
         {scenery.map((s, i) => (
           <Text
             key={`scn-${i}`}
@@ -195,6 +270,21 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
             {s.emoji}
           </Text>
         ))}
+
+        {/* The obstacle the cat hops over when its path crosses. */}
+        <Text
+          style={[
+            styles.obstacle,
+            {
+              left: obstacle.x - obstacle.size / 2,
+              top: obstacle.y - obstacle.size / 2,
+              fontSize: obstacle.size,
+            },
+          ]}
+          pointerEvents="none"
+        >
+          {scenario.obstacle.emoji}
+        </Text>
 
         {tiles.map(p => (
           <AdventureTile
@@ -209,6 +299,12 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
 
         <Animated.View style={[styles.cat, catStyle]} pointerEvents="none">
           <Text style={styles.catEmoji}>🐱</Text>
+        </Animated.View>
+
+        {/* Scenario intro title — fades in then out at round start. */}
+        <Animated.View style={[styles.titleWrap, titleStyle]} pointerEvents="none">
+          <Text style={styles.titleEmoji}>{scenario.emoji}</Text>
+          <Text style={styles.titleText}>{scenario.name}</Text>
         </Animated.View>
       </View>
     </View>
@@ -288,18 +384,37 @@ function placeTiles(pool: VocabItem[], target: VocabItem, worldW: number, worldH
   return placed;
 }
 
-function placeScenery(worldW: number, worldH: number) {
-  const count = 14;
+function placeScenery(scenario: Scenario, worldW: number, worldH: number) {
+  const palette = scenario.scenery;
   const result: { x: number; y: number; size: number; emoji: string }[] = [];
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < scenario.sceneryCount; i++) {
     result.push({
       x: Math.random() * (worldW - 40),
       y: Math.random() * (worldH - 40),
       size: 22 + Math.random() * 16,
-      emoji: SCENERY_EMOJI[Math.floor(Math.random() * SCENERY_EMOJI.length)],
+      emoji: palette[Math.floor(Math.random() * palette.length)],
     });
   }
   return result;
+}
+
+/**
+ * Place the obstacle somewhere in the middle band of the world — far
+ * enough from the cat's centre-start to be on a likely path, far enough
+ * from the edges that tiles aren't placed on top of it.
+ */
+function placeObstacle(scenario: Scenario, worldW: number, worldH: number) {
+  // Pick a position in a ring around centre — biased toward horizontal
+  // displacement so the cat actually walks past it on her way to a tile.
+  const angle = Math.random() * Math.PI * 2;
+  const fx = clamp(0.5 + Math.cos(angle) * 0.18, 0.20, 0.80);
+  const fy = clamp(0.5 + Math.sin(angle) * 0.10 * (worldW / worldH), 0.25, 0.75);
+  return { x: fx * worldW, y: fy * worldH, size: scenario.obstacle.size };
+}
+
+function pickScenario(prevId: string): Scenario {
+  const others = SCENARIOS.filter(s => s.id !== prevId);
+  return others[Math.floor(Math.random() * others.length)];
 }
 
 function shuffleInPlace<T>(arr: T[]): void {
@@ -384,6 +499,36 @@ const styles = StyleSheet.create({
   scenery: {
     position: 'absolute',
     opacity: 0.55,
+  },
+  obstacle: {
+    position: 'absolute',
+    textAlign: 'center',
+    // Slight drop-shadow on the emoji glyph itself so it reads as "in the world".
+    textShadowColor: 'rgba(60,40,10,0.25)',
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 6,
+  },
+  titleWrap: {
+    position: 'absolute',
+    top: 28,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 12,
+  },
+  titleEmoji: { fontSize: 38 },
+  titleText: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: THEME.colors.text,
+    letterSpacing: -0.5,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    paddingHorizontal: 18,
+    paddingVertical: 6,
+    borderRadius: THEME.radius.pill,
+    overflow: 'hidden',
   },
   tileWrap: {
     position: 'absolute',
