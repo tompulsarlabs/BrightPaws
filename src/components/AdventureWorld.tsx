@@ -1,17 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
-  Easing,
   useAnimatedStyle,
   useSharedValue,
-  withDelay,
   withSequence,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import {
   ADVENTURE_ROUNDS_PER_SESSION,
-  COINS_PER_CORRECT,
   THEME,
   type Level,
   type VocabItem,
@@ -20,7 +17,6 @@ import {
 import { AssetView } from './AssetView';
 import { feedbackCorrect, feedbackTap, feedbackWrong } from '../lib/feedback';
 import { speakEnglish } from '../lib/audio';
-import { t } from '../lib/i18n';
 
 interface Props {
   level: Level;
@@ -38,48 +34,50 @@ interface PlacedTile {
 interface Scenario {
   id: string;
   name: string;
-  /** Emoji shown in the round-intro title. */
   emoji: string;
-  /** World background tint. */
   bg: string;
-  /** Decorative scenery emoji palette for this scene. */
   scenery: string[];
-  /** Number of decorations to scatter. */
   sceneryCount: number;
-  /** What the cat has to hop over to reach a tile. */
   obstacle: { emoji: string; size: number };
 }
 
-/**
- * Each round picks a different scenario for narrative variety. The cat,
- * tiles, and matching mechanic stay the same — only the world's mood
- * (background tint, scenery palette, obstacle type) changes.
- */
 const SCENARIOS: Scenario[] = [
-  { id: 'forest', name: 'Forest',  emoji: '🌲', bg: '#E5EFD7', scenery: ['🌳', '🌲', '🌿', '🍄'], sceneryCount: 14, obstacle: { emoji: '🪵', size: 64 } },
-  { id: 'meadow', name: 'Meadow',  emoji: '🌼', bg: '#FBF3CC', scenery: ['🌼', '🌸', '🌾', '🦋'], sceneryCount: 16, obstacle: { emoji: '🪨', size: 54 } },
-  { id: 'beach',  name: 'Beach',   emoji: '🏖️', bg: '#FCE3A8', scenery: ['🐚', '⭐', '🌴', '🪸'], sceneryCount: 12, obstacle: { emoji: '🪨', size: 56 } },
-  { id: 'snow',   name: 'Snowfield', emoji: '❄️', bg: '#E0ECF3', scenery: ['❄️', '🌨️', '🌲', '🐧'], sceneryCount: 16, obstacle: { emoji: '⛄', size: 64 } },
+  { id: 'forest', name: 'Forest',       emoji: '🌲', bg: '#E5EFD7', scenery: ['🌳', '🌲', '🌿', '🍄'], sceneryCount: 14, obstacle: { emoji: '🪵', size: 64 } },
+  { id: 'meadow', name: 'Meadow',       emoji: '🌼', bg: '#FBF3CC', scenery: ['🌼', '🌸', '🌾', '🦋'], sceneryCount: 16, obstacle: { emoji: '🪨', size: 54 } },
+  { id: 'beach',  name: 'Beach',        emoji: '🏖️', bg: '#FCE3A8', scenery: ['🐚', '⭐', '🌴', '🪸'], sceneryCount: 12, obstacle: { emoji: '🪨', size: 56 } },
+  { id: 'snow',   name: 'Snowfield',    emoji: '❄️', bg: '#E0ECF3', scenery: ['❄️', '🌨️', '🌲', '🐧'], sceneryCount: 16, obstacle: { emoji: '⛄', size: 64 } },
   { id: 'night',  name: 'Starry Night', emoji: '🌙', bg: '#D7D2EE', scenery: ['⭐', '✨', '🌙', '🦉'], sceneryCount: 14, obstacle: { emoji: '🪨', size: 50 } },
 ];
 
 const CAT_SIZE = 88;
 const TILE_SIZE = 110;
-const WALK_SPEED_PX_PER_S = 360;
+
+// Movement tuning — pixels per second for d-pad walking; jump impulse + gravity
+// pull are in pixels-per-tick (TICK_MS = 33).
+const WALK_SPEED_PX_PER_S = 380;
+const TICK_MS = 33;
+const JUMP_IMPULSE = -14;     // initial vy on jump button press
+const GRAVITY_PER_TICK = 1.05; // pulls hopY back toward 0
+const JUMP_CLEAR_THRESHOLD = -28; // hopY ≤ this → cat is high enough to clear obstacles
+
+interface Inputs {
+  left: boolean;
+  right: boolean;
+  up: boolean;
+  down: boolean;
+  jumpRequested: boolean; // edge — consumed by the jump tick
+}
 
 /**
- * Top-down "adventure" mode. Cat starts at centre, child taps a word tile
- * to make her walk over to it. Reach the right tile → coin + next round.
- * Reach the wrong tile → soft buzz, target re-spoken, no penalty.
- *
- * Layout uses absolute positioning inside a fixed world rect, sized off
- * the viewport. Scenery + tile positions are randomised once per round
- * via useMemo (keyed on round + level) so the world feels fresh.
+ * Player-controlled adventure mode: child drives the cat with the on-screen
+ * D-pad (or arrow keys on web). Walk into the right word tile to claim it.
+ * The obstacle blocks horizontal/vertical movement — must Jump to clear it.
  */
 export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
   const { width, height } = useWindowDimensions();
   const headerH = 96;
-  const worldH = Math.max(360, height - headerH - 40);
+  const controlsH = 120;
+  const worldH = Math.max(280, height - headerH - controlsH - 28);
   const worldW = Math.min(width - 32, 1200);
 
   const pool = useMemo(() => level.vocabIds.map(getVocab), [level]);
@@ -92,18 +90,29 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
   const [obstacle, setObstacle] = useState(() => placeObstacle(scenario, worldW, worldH));
   const [correctFirstTry, setCorrectFirstTry] = useState(0);
   const [shakeId, setShakeId] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const wrongTriesRef = useRef(false);
   const lastTargetIdsRef = useRef<string[]>([target.id]);
   const lastScenarioIdRef = useRef<string>(scenario.id);
 
-  // Cat position — start at world centre.
-  const catX = useSharedValue(worldW / 2 - CAT_SIZE / 2);
-  const catY = useSharedValue(worldH / 2 - CAT_SIZE / 2);
-  const facing = useSharedValue(1); // 1 = right, -1 = left
-  const hopY = useSharedValue(0); // additional Y offset for hop-over-obstacle arcs
+  const startX = worldW / 2 - CAT_SIZE / 2;
+  const startY = worldH / 2 - CAT_SIZE / 2;
+  const catX = useSharedValue(startX);
+  const catY = useSharedValue(startY);
+  const facing = useSharedValue(1);
+  const hopY = useSharedValue(0);
 
-  // Scenario intro title — fades in then out at round start.
+  // Live state read by the frame loop.
+  const inputsRef = useRef<Inputs>({ left: false, right: false, up: false, down: false, jumpRequested: false });
+  const jumpStateRef = useRef<{ vy: number; airborne: boolean }>({ vy: 0, airborne: false });
+  const lastTouchedRef = useRef<string | null>(null);
+  const tilesRef = useRef(tiles);
+  const obstacleRef = useRef(obstacle);
+  const targetRef = useRef(target);
+  tilesRef.current = tiles;
+  obstacleRef.current = obstacle;
+  targetRef.current = target;
+
+  // Title fade-in per round.
   const titleOpacity = useSharedValue(0);
   useEffect(() => {
     titleOpacity.value = withSequence(
@@ -113,17 +122,149 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
     );
   }, [scenario, round, titleOpacity]);
 
-  // Re-centre cat if viewport size changes mid-game (rare).
+  // Re-centre cat on world resize (rare).
   useEffect(() => {
-    catX.value = worldW / 2 - CAT_SIZE / 2;
-    catY.value = worldH / 2 - CAT_SIZE / 2;
-  }, [worldW, worldH, catX, catY]);
+    catX.value = startX;
+    catY.value = startY;
+  }, [worldW, worldH, startX, startY, catX, catY]);
 
-  // Auto-speak the target on round change so she always hears what to find.
+  // Auto-speak target on round change.
   useEffect(() => {
     const id = setTimeout(() => speakEnglish(target.en), 350);
     return () => clearTimeout(id);
   }, [target]);
+
+  // Keyboard controls on web — arrow keys + space.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const down = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft')  inputsRef.current.left = true;
+      if (e.key === 'ArrowRight') inputsRef.current.right = true;
+      if (e.key === 'ArrowUp')    inputsRef.current.up = true;
+      if (e.key === 'ArrowDown')  inputsRef.current.down = true;
+      if (e.key === ' ' || e.key === 'Spacebar') {
+        inputsRef.current.jumpRequested = true;
+        e.preventDefault();
+      }
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft')  inputsRef.current.left = false;
+      if (e.key === 'ArrowRight') inputsRef.current.right = false;
+      if (e.key === 'ArrowUp')    inputsRef.current.up = false;
+      if (e.key === 'ArrowDown')  inputsRef.current.down = false;
+    };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+    };
+  }, []);
+
+  // Frame loop — drives movement, gravity, collisions, tile triggers.
+  useEffect(() => {
+    const id = setInterval(() => {
+      const inp = inputsRef.current;
+      const jump = jumpStateRef.current;
+      const speed = (WALK_SPEED_PX_PER_S * TICK_MS) / 1000;
+
+      // ─── Horizontal/vertical input ───
+      let dx = 0, dy = 0;
+      if (inp.left) dx -= 1;
+      if (inp.right) dx += 1;
+      if (inp.up) dy -= 1;
+      if (inp.down) dy += 1;
+      const mag = Math.hypot(dx, dy);
+      if (mag > 0) {
+        dx = (dx / mag) * speed;
+        dy = (dy / mag) * speed;
+        if (dx !== 0) facing.value = dx > 0 ? 1 : -1;
+      }
+
+      // ─── Jump physics ───
+      if (inp.jumpRequested && !jump.airborne) {
+        jump.vy = JUMP_IMPULSE;
+        jump.airborne = true;
+      }
+      inp.jumpRequested = false;
+
+      if (jump.airborne) {
+        jump.vy += GRAVITY_PER_TICK;
+        const nextHop = hopY.value + jump.vy;
+        if (nextHop >= 0) {
+          hopY.value = 0;
+          jump.vy = 0;
+          jump.airborne = false;
+        } else {
+          hopY.value = nextHop;
+        }
+      }
+
+      // ─── Move with obstacle blocking ───
+      const fromX = catX.value;
+      const fromY = catY.value;
+      const tryX = clamp(fromX + dx, 0, worldW - CAT_SIZE);
+      const tryY = clamp(fromY + dy, 0, worldH - CAT_SIZE);
+
+      const obs = obstacleRef.current;
+      const obsRect = {
+        x: obs.x - obs.size / 2,
+        y: obs.y - obs.size / 2,
+        w: obs.size,
+        h: obs.size,
+      };
+      const canPassObstacle = hopY.value <= JUMP_CLEAR_THRESHOLD;
+      let nextX = tryX;
+      let nextY = tryY;
+      if (!canPassObstacle) {
+        // Resolve X first, then Y — lets the cat slide along an obstacle edge.
+        if (rectsOverlap({ x: tryX, y: fromY, w: CAT_SIZE, h: CAT_SIZE }, obsRect)) {
+          nextX = fromX;
+        }
+        if (rectsOverlap({ x: nextX, y: tryY, w: CAT_SIZE, h: CAT_SIZE }, obsRect)) {
+          nextY = fromY;
+        }
+      }
+      catX.value = nextX;
+      catY.value = nextY;
+
+      // ─── Tile collision ───
+      const cat = { x: nextX, y: nextY, w: CAT_SIZE, h: CAT_SIZE };
+      let touched: string | null = null;
+      for (const p of tilesRef.current) {
+        const tx = p.fx * worldW - TILE_SIZE / 2;
+        const ty = p.fy * worldH - TILE_SIZE / 2;
+        if (rectsOverlap(cat, { x: tx, y: ty, w: TILE_SIZE, h: TILE_SIZE })) {
+          touched = p.item.id;
+          break;
+        }
+      }
+      if (touched !== lastTouchedRef.current) {
+        if (touched != null) {
+          const placed = tilesRef.current.find(p => p.item.id === touched);
+          if (placed) evaluate(placed);
+        }
+        lastTouchedRef.current = touched;
+      }
+    }, TICK_MS);
+    return () => clearInterval(id);
+  }, [worldW, worldH, catX, catY, facing, hopY]);
+
+  function evaluate(placed: PlacedTile) {
+    if (placed.item.id === targetRef.current.id) {
+      feedbackCorrect();
+      onAward();
+      if (!wrongTriesRef.current) setCorrectFirstTry(c => c + 1);
+      setShakeId(placed.item.id);
+      setTimeout(() => { setShakeId(null); advanceRound(); }, 700);
+    } else {
+      feedbackWrong();
+      wrongTriesRef.current = true;
+      setShakeId(placed.item.id);
+      setTimeout(() => setShakeId(null), 500);
+      setTimeout(() => speakEnglish(targetRef.current.en), 250);
+    }
+  }
 
   function advanceRound() {
     const nextRound = round + 1;
@@ -142,93 +283,12 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
     setScenery(placeScenery(nextScenario, worldW, worldH));
     setObstacle(placeObstacle(nextScenario, worldW, worldH));
     wrongTriesRef.current = false;
-  }
-
-  function walkTo(targetX: number, targetY: number, onArrive?: () => void) {
-    const fromX = catX.value;
-    const fromY = catY.value;
-    const dx = targetX - fromX;
-    const dy = targetY - fromY;
-    const dist = Math.max(1, Math.hypot(dx, dy));
-    const durationMs = Math.min(2000, Math.max(220, (dist / WALK_SPEED_PX_PER_S) * 1000));
-    if (dx !== 0) facing.value = dx > 0 ? 1 : -1;
-    setBusy(true);
-    catX.value = withTiming(targetX, { duration: durationMs });
-    catY.value = withTiming(targetY, { duration: durationMs }, (finished) => {
-      if (finished && onArrive) runOnJSDelay(onArrive, 0);
-    });
-
-    // Compute whether the cat's path crosses the obstacle. If so, schedule
-    // a hop arc on hopY at the moment the cat reaches the obstacle's x.
-    const obsCx = obstacle.x;
-    const obsCy = obstacle.y;
-    const catCxFrom = fromX + CAT_SIZE / 2;
-    const catCyFrom = fromY + CAT_SIZE / 2;
-    const catCxTo = targetX + CAT_SIZE / 2;
-    const catCyTo = targetY + CAT_SIZE / 2;
-    let hopAtMs: number | null = null;
-    if (Math.abs(catCxTo - catCxFrom) > 4) {
-      const f = (obsCx - catCxFrom) / (catCxTo - catCxFrom);
-      if (f > 0.06 && f < 0.94) {
-        const catCyAtCrossing = catCyFrom + (catCyTo - catCyFrom) * f;
-        const verticalGap = Math.abs(catCyAtCrossing - obsCy);
-        if (verticalGap < (obstacle.size / 2 + CAT_SIZE / 2 + 24)) {
-          hopAtMs = Math.max(0, f * durationMs - 140);
-        }
-      }
-    }
-    if (hopAtMs !== null) {
-      const hopHeight = -56;
-      hopY.value = withDelay(hopAtMs, withSequence(
-        withTiming(hopHeight, { duration: 200, easing: Easing.out(Easing.quad) }),
-        withTiming(0, { duration: 240, easing: Easing.in(Easing.quad) }),
-      ));
-    } else {
-      // Subtle walking bob — no obstacle to hop. Use a single half-sine
-      // so we don't overlap with a hop on the next walk.
-      const bobs = Math.max(2, Math.floor(durationMs / 220));
-      hopY.value = withSequence(
-        ...Array.from({ length: bobs }, (_, i) =>
-          withTiming(i % 2 === 0 ? -5 : 0, { duration: 220 }),
-        ),
-        withTiming(0, { duration: 60 }),
-      );
-    }
-  }
-
-  function handleTilePress(placed: PlacedTile) {
-    if (busy) return;
-    feedbackTap();
-    // Stop a step short of the tile centre so the cat appears to greet it.
-    const targetCenterX = placed.fx * worldW;
-    const targetCenterY = placed.fy * worldH;
-    const fromX = catX.value + CAT_SIZE / 2;
-    const fromY = catY.value + CAT_SIZE / 2;
-    const dx = targetCenterX - fromX;
-    const dy = targetCenterY - fromY;
-    const dist = Math.max(1, Math.hypot(dx, dy));
-    const stopShort = Math.min(dist, TILE_SIZE * 0.55);
-    const arriveX = fromX + (dx / dist) * (dist - stopShort) - CAT_SIZE / 2;
-    const arriveY = fromY + (dy / dist) * (dist - stopShort) - CAT_SIZE / 2;
-    walkTo(arriveX, arriveY, () => evaluate(placed));
-  }
-
-  function evaluate(placed: PlacedTile) {
-    setBusy(false);
-    if (placed.item.id === target.id) {
-      feedbackCorrect();
-      onAward();
-      if (!wrongTriesRef.current) setCorrectFirstTry(c => c + 1);
-      setShakeId(placed.item.id);
-      setTimeout(() => { setShakeId(null); advanceRound(); }, 700);
-    } else {
-      feedbackWrong();
-      wrongTriesRef.current = true;
-      setShakeId(placed.item.id);
-      setTimeout(() => setShakeId(null), 500);
-      // Re-speak the target so she knows what to look for.
-      setTimeout(() => speakEnglish(target.en), 250);
-    }
+    // Re-centre cat for the new scene + clear any in-flight collision state.
+    catX.value = startX;
+    catY.value = startY;
+    hopY.value = 0;
+    jumpStateRef.current = { vy: 0, airborne: false };
+    lastTouchedRef.current = null;
   }
 
   const catStyle = useAnimatedStyle(() => ({
@@ -241,37 +301,43 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
 
   const titleStyle = useAnimatedStyle(() => ({ opacity: titleOpacity.value }));
 
+  const setInput = (key: keyof Inputs, val: boolean) => {
+    inputsRef.current = { ...inputsRef.current, [key]: val };
+  };
+  const requestJump = () => {
+    feedbackTap();
+    inputsRef.current.jumpRequested = true;
+  };
+
   return (
     <View style={styles.root}>
-      {/* Header — target prompt + audio re-play */}
+      {/* Header */}
       <View style={[styles.header, { width: worldW }]}>
         <Text style={styles.round}>{level.name} · {round + 1} / {ADVENTURE_ROUNDS_PER_SESSION}</Text>
         <Pressable
           onPress={() => speakEnglish(target.en)}
           style={({ pressed }) => [styles.targetPill, pressed && { opacity: 0.85 }]}
         >
-          <Text style={styles.targetText}>{t('adventure_prompt', target.en)}</Text>
+          <Text style={styles.targetText}>Find the {target.en}</Text>
           <Text style={styles.speakerIcon}>🔊</Text>
         </Pressable>
-        <Text style={styles.hint}>{t('adventure_hint')}</Text>
+        <Text style={styles.hint}>Use the arrows · Jump to leap</Text>
       </View>
 
-      {/* World — scenery, tiles, obstacle, cat */}
+      {/* World */}
       <View
         style={[styles.world, { width: worldW, height: worldH, backgroundColor: scenario.bg }]}
-        pointerEvents="box-none"
+        pointerEvents="none"
       >
         {scenery.map((s, i) => (
           <Text
             key={`scn-${i}`}
             style={[styles.scenery, { left: s.x, top: s.y, fontSize: s.size }]}
-            pointerEvents="none"
           >
             {s.emoji}
           </Text>
         ))}
 
-        {/* The obstacle the cat hops over when its path crosses. */}
         <Text
           style={[
             styles.obstacle,
@@ -281,7 +347,6 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
               fontSize: obstacle.size,
             },
           ]}
-          pointerEvents="none"
         >
           {scenario.obstacle.emoji}
         </Text>
@@ -293,32 +358,78 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
             worldW={worldW}
             worldH={worldH}
             shake={shakeId === p.item.id}
-            onPress={() => handleTilePress(p)}
           />
         ))}
 
-        <Animated.View style={[styles.cat, catStyle]} pointerEvents="none">
+        <Animated.View style={[styles.cat, catStyle]}>
           <Text style={styles.catEmoji}>🐱</Text>
         </Animated.View>
 
-        {/* Scenario intro title — fades in then out at round start. */}
-        <Animated.View style={[styles.titleWrap, titleStyle]} pointerEvents="none">
+        <Animated.View style={[styles.titleWrap, titleStyle]}>
           <Text style={styles.titleEmoji}>{scenario.emoji}</Text>
           <Text style={styles.titleText}>{scenario.name}</Text>
         </Animated.View>
+      </View>
+
+      {/* Controls — D-pad on left, Jump on right */}
+      <View style={[styles.controls, { width: worldW }]}>
+        <View style={styles.dpad}>
+          <View style={styles.dpadRow}>
+            <View style={styles.dpadSpacer} />
+            <DpadButton label="↑" onIn={() => setInput('up', true)} onOut={() => setInput('up', false)} />
+            <View style={styles.dpadSpacer} />
+          </View>
+          <View style={styles.dpadRow}>
+            <DpadButton label="←" onIn={() => setInput('left', true)} onOut={() => setInput('left', false)} />
+            <View style={styles.dpadSpacer} />
+            <DpadButton label="→" onIn={() => setInput('right', true)} onOut={() => setInput('right', false)} />
+          </View>
+          <View style={styles.dpadRow}>
+            <View style={styles.dpadSpacer} />
+            <DpadButton label="↓" onIn={() => setInput('down', true)} onOut={() => setInput('down', false)} />
+            <View style={styles.dpadSpacer} />
+          </View>
+        </View>
+
+        <Pressable
+          onPress={requestJump}
+          accessibilityLabel="Jump"
+          style={({ pressed }) => [
+            styles.jumpBtn,
+            { transform: [{ scale: pressed ? 0.94 : 1 }] },
+          ]}
+        >
+          <Text style={styles.jumpEmoji}>⬆</Text>
+          <Text style={styles.jumpLabel}>Jump</Text>
+        </Pressable>
       </View>
     </View>
   );
 }
 
+function DpadButton({ label, onIn, onOut }: { label: string; onIn: () => void; onOut: () => void }) {
+  return (
+    <Pressable
+      onPressIn={onIn}
+      onPressOut={onOut}
+      accessibilityLabel={`Move ${label}`}
+      style={({ pressed }) => [
+        styles.dpadBtn,
+        pressed && { transform: [{ scale: 0.93 }], backgroundColor: THEME.colors.accent },
+      ]}
+    >
+      <Text style={styles.dpadLabel}>{label}</Text>
+    </Pressable>
+  );
+}
+
 function AdventureTile({
-  placed, worldW, worldH, shake, onPress,
+  placed, worldW, worldH, shake,
 }: {
   placed: PlacedTile;
   worldW: number;
   worldH: number;
   shake: boolean;
-  onPress: () => void;
 }) {
   const tx = placed.fx * worldW - TILE_SIZE / 2;
   const ty = placed.fy * worldH - TILE_SIZE / 2;
@@ -337,13 +448,10 @@ function AdventureTile({
 
   return (
     <Animated.View style={[styles.tileWrap, { left: tx, top: ty }, aniStyle]}>
-      <Pressable onPress={onPress} style={({ pressed }) => [
-        styles.tile,
-        pressed && { transform: [{ scale: 0.96 }] },
-      ]}>
+      <View style={styles.tile}>
         <AssetView asset={placed.item.art} size={64} />
         <Text style={styles.tileLabel}>{placed.item.en}</Text>
-      </Pressable>
+      </View>
     </Animated.View>
   );
 }
@@ -361,19 +469,15 @@ function placeTiles(pool: VocabItem[], target: VocabItem, worldW: number, worldH
   shuffleInPlace(distractors);
   const items = [target, ...distractors.slice(0, 4)];
   shuffleInPlace(items);
-
-  // Place around an annulus from centre — keeps tiles away from the cat's
-  // start position and away from the world edges.
   const cx = 0.5;
   const cy = 0.5;
   const placed: PlacedTile[] = [];
-  const minSep = (TILE_SIZE * 1.4) / Math.min(worldW, worldH);
   for (let i = 0; i < items.length; i++) {
     let attempt = 0;
     while (attempt < 80) {
       attempt++;
       const angle = (i / items.length) * Math.PI * 2 + (Math.random() - 0.5) * 0.6;
-      const radius = 0.30 + Math.random() * 0.14;
+      const radius = 0.32 + Math.random() * 0.12;
       const fx = clamp(cx + Math.cos(angle) * radius, 0.10, 0.90);
       const fy = clamp(cy + Math.sin(angle) * radius * (worldW / worldH), 0.16, 0.84);
       const ok = placed.every(p => Math.hypot((p.fx - fx) * worldW, (p.fy - fy) * worldH) > TILE_SIZE * 1.2);
@@ -398,14 +502,7 @@ function placeScenery(scenario: Scenario, worldW: number, worldH: number) {
   return result;
 }
 
-/**
- * Place the obstacle somewhere in the middle band of the world — far
- * enough from the cat's centre-start to be on a likely path, far enough
- * from the edges that tiles aren't placed on top of it.
- */
 function placeObstacle(scenario: Scenario, worldW: number, worldH: number) {
-  // Pick a position in a ring around centre — biased toward horizontal
-  // displacement so the cat actually walks past it on her way to a tile.
   const angle = Math.random() * Math.PI * 2;
   const fx = clamp(0.5 + Math.cos(angle) * 0.18, 0.20, 0.80);
   const fy = clamp(0.5 + Math.sin(angle) * 0.10 * (worldW / worldH), 0.25, 0.75);
@@ -428,13 +525,13 @@ function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
 }
 
-/** runOnJS-style helper. The reanimated runOnJS import is finicky across
- *  versions; setTimeout(fn, 0) reaches the JS thread reliably. */
-function runOnJSDelay(fn: () => void, ms: number) {
-  setTimeout(fn, ms);
+function rectsOverlap(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
 /* ──────────── styles ──────────── */
+
+const DPAD_BTN_SIZE = 52;
 
 const styles = StyleSheet.create({
   root: {
@@ -479,9 +576,7 @@ const styles = StyleSheet.create({
     color: THEME.colors.text,
     letterSpacing: -0.3,
   },
-  speakerIcon: {
-    fontSize: 24,
-  },
+  speakerIcon: { fontSize: 24 },
   hint: {
     fontSize: 13,
     fontStyle: 'italic',
@@ -496,14 +591,10 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: THEME.colors.cardBorder,
   },
-  scenery: {
-    position: 'absolute',
-    opacity: 0.55,
-  },
+  scenery: { position: 'absolute', opacity: 0.55 },
   obstacle: {
     position: 'absolute',
     textAlign: 'center',
-    // Slight drop-shadow on the emoji glyph itself so it reads as "in the world".
     textShadowColor: 'rgba(60,40,10,0.25)',
     textShadowOffset: { width: 0, height: 3 },
     textShadowRadius: 6,
@@ -530,11 +621,7 @@ const styles = StyleSheet.create({
     borderRadius: THEME.radius.pill,
     overflow: 'hidden',
   },
-  tileWrap: {
-    position: 'absolute',
-    width: TILE_SIZE,
-    height: TILE_SIZE,
-  },
+  tileWrap: { position: 'absolute', width: TILE_SIZE, height: TILE_SIZE },
   tile: {
     flex: 1,
     backgroundColor: THEME.colors.card,
@@ -563,8 +650,49 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  catEmoji: {
-    fontSize: 76,
-    lineHeight: 84,
+  catEmoji: { fontSize: 76, lineHeight: 84 },
+
+  /* ─ Controls ─ */
+  controls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: THEME.spacing.xl,
+    paddingTop: THEME.spacing.sm,
   },
+  dpad: { alignItems: 'center' },
+  dpadRow: { flexDirection: 'row' },
+  dpadBtn: {
+    width: DPAD_BTN_SIZE,
+    height: DPAD_BTN_SIZE,
+    margin: 4,
+    borderRadius: 14,
+    backgroundColor: THEME.colors.card,
+    borderWidth: 2,
+    borderColor: THEME.colors.cardBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  dpadLabel: { fontSize: 28, fontWeight: '800', color: THEME.colors.text },
+  dpadSpacer: { width: DPAD_BTN_SIZE + 8, height: DPAD_BTN_SIZE + 8 },
+  jumpBtn: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: THEME.colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  jumpEmoji: { fontSize: 36, color: '#fff', lineHeight: 42 },
+  jumpLabel: { fontSize: 14, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
 });
