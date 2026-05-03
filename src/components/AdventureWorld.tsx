@@ -93,13 +93,11 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
   const pool = useMemo(() => level.vocabIds.map(getVocab), [level]);
 
   const [round, setRound] = useState(0);
-  // Scenario is a function of round — Forest first, then Meadow, then Beach,
-  // Snowfield, Starry Night. Like Mario worlds 1→5 (a journey, not a shuffle).
   const scenario = SCENARIOS[Math.min(round, SCENARIOS.length - 1)];
   const [target, setTarget] = useState<VocabItem>(() => pickTarget(pool, []));
   const [tiles, setTiles] = useState<PlacedTile[]>(() => placeTiles(pool, target, worldW, worldH));
   const [scenery, setScenery] = useState(() => placeScenery(scenario, worldW, worldH));
-  const [obstacle, setObstacle] = useState(() => placeObstacle(scenario, worldW, worldH));
+  const [obstacles, setObstacles] = useState(() => placeObstacles(scenario, worldW, worldH));
   const [correctFirstTry, setCorrectFirstTry] = useState(0);
   const [shakeId, setShakeId] = useState<string | null>(null);
   const wrongTriesRef = useRef(false);
@@ -111,16 +109,20 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
   const catY = useSharedValue(startY);
   const facing = useSharedValue(1);
   const hopY = useSharedValue(0);
+  // Walking-step bob — separate from hopY so a jump arc doesn't fight the
+  // step rhythm. A small sin-wave Y oscillation while any direction is held.
+  const walkBob = useSharedValue(0);
 
   // Live state read by the frame loop.
   const inputsRef = useRef<Inputs>({ left: false, right: false, up: false, down: false, jumpRequested: false });
   const jumpStateRef = useRef<{ vy: number; airborne: boolean }>({ vy: 0, airborne: false });
   const lastTouchedRef = useRef<string | null>(null);
   const tilesRef = useRef(tiles);
-  const obstacleRef = useRef(obstacle);
+  const obstaclesRef = useRef(obstacles);
   const targetRef = useRef(target);
+  const walkPhaseRef = useRef(0);
   tilesRef.current = tiles;
-  obstacleRef.current = obstacle;
+  obstaclesRef.current = obstacles;
   targetRef.current = target;
 
   // Title fade-in per round.
@@ -217,27 +219,43 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
       const tryX = clamp(fromX + dx, 0, worldW - CAT_SIZE);
       const tryY = clamp(fromY + dy, 0, worldH - CAT_SIZE);
 
-      const obs = obstacleRef.current;
-      const obsRect = {
-        x: obs.x - obs.size / 2,
-        y: obs.y - obs.size / 2,
-        w: obs.size,
-        h: obs.size,
-      };
       const canPassObstacle = hopY.value <= JUMP_CLEAR_THRESHOLD;
       let nextX = tryX;
       let nextY = tryY;
       if (!canPassObstacle) {
-        // Resolve X first, then Y — lets the cat slide along an obstacle edge.
-        if (rectsOverlap({ x: tryX, y: fromY, w: CAT_SIZE, h: CAT_SIZE }, obsRect)) {
-          nextX = fromX;
-        }
-        if (rectsOverlap({ x: nextX, y: tryY, w: CAT_SIZE, h: CAT_SIZE }, obsRect)) {
-          nextY = fromY;
+        // Resolve X first, then Y separately, against EACH obstacle. This
+        // lets the cat slide along an obstacle edge instead of getting stuck.
+        for (const obs of obstaclesRef.current) {
+          const obsRect = {
+            x: obs.x - obs.size / 2,
+            y: obs.y - obs.size / 2,
+            w: obs.size,
+            h: obs.size,
+          };
+          if (rectsOverlap({ x: nextX, y: fromY, w: CAT_SIZE, h: CAT_SIZE }, obsRect)) {
+            nextX = fromX;
+          }
+          if (rectsOverlap({ x: nextX, y: nextY, w: CAT_SIZE, h: CAT_SIZE }, obsRect)) {
+            nextY = fromY;
+          }
         }
       }
       catX.value = nextX;
       catY.value = nextY;
+
+      // ─── Walking-step bob ───
+      // Cat oscillates a few px on Y while any direction is held and we're
+      // not airborne. Phase accumulates per-tick — frequency comes out to
+      // about 4–5 steps/sec at the chosen speed.
+      const moving = mag > 0 && !jump.airborne;
+      if (moving) {
+        walkPhaseRef.current += 0.32;
+        walkBob.value = Math.sin(walkPhaseRef.current) * 4;
+      } else {
+        // Quick decay to zero so the cat settles when she stops.
+        walkBob.value = walkBob.value * 0.6;
+        walkPhaseRef.current = 0;
+      }
 
       // ─── Tile collision ───
       const cat = { x: nextX, y: nextY, w: CAT_SIZE, h: CAT_SIZE };
@@ -292,7 +310,7 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
     setTarget(nextTarget);
     setTiles(placeTiles(pool, nextTarget, worldW, worldH));
     setScenery(placeScenery(nextScenario, worldW, worldH));
-    setObstacle(placeObstacle(nextScenario, worldW, worldH));
+    setObstacles(placeObstacles(nextScenario, worldW, worldH));
     wrongTriesRef.current = false;
     // Re-centre cat for the new scene + clear any in-flight collision state.
     catX.value = startX;
@@ -305,7 +323,7 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
   const catStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: catX.value },
-      { translateY: catY.value + hopY.value },
+      { translateY: catY.value + hopY.value + walkBob.value },
       { scaleX: facing.value },
     ],
   }));
@@ -335,92 +353,99 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
         <Text style={styles.hint}>Use the arrows · Jump to leap</Text>
       </View>
 
-      {/* World — controls are absolutely positioned children so the layout
-          always fits regardless of viewport height. */}
-      <View
-        style={[styles.world, { width: worldW, height: worldH, backgroundColor: scenario.bg }]}
-        pointerEvents="box-none"
-      >
-        {scenery.map((s, i) => (
-          <Text
-            key={`scn-${i}`}
-            style={[styles.scenery, { left: s.x, top: s.y, fontSize: s.size }]}
-            pointerEvents="none"
-          >
-            {s.emoji}
-          </Text>
-        ))}
-
-        <Text
-          style={[
-            styles.obstacle,
-            {
-              left: obstacle.x - obstacle.size / 2,
-              top: obstacle.y - obstacle.size / 2,
-              fontSize: obstacle.size,
-            },
-          ]}
+      {/* worldFrame is the positioned ancestor for both the world layer and
+          the controls overlay. Explicit `position: 'relative'` here means
+          our absolutely-positioned children always anchor inside this rect
+          (Chrome/Safari iOS were dropping the anchor without it, sending
+          the controls below the world). */}
+      <View style={[styles.worldFrame, { width: worldW, height: worldH }]}>
+        {/* World layer */}
+        <View
+          style={[styles.worldFill, { backgroundColor: scenario.bg }]}
           pointerEvents="none"
         >
-          {scenario.obstacle.emoji}
-        </Text>
-
-        {tiles.map(p => (
-          <AdventureTile
-            key={`${round}-${p.item.id}`}
-            placed={p}
-            worldW={worldW}
-            worldH={worldH}
-            shake={shakeId === p.item.id}
-          />
-        ))}
-
-        <Animated.View style={[styles.cat, catStyle]} pointerEvents="none">
-          <Text style={styles.catEmoji}>🐱</Text>
-        </Animated.View>
-
-        <Animated.View style={[styles.titleWrap, titleStyle]} pointerEvents="none">
-          <View style={styles.titleRow}>
-            <Text style={styles.titleEmoji}>{scenario.emoji}</Text>
-            <Text style={styles.titleText}>
-              World {round + 1} · {scenario.name}
+          {scenery.map((s, i) => (
+            <Text
+              key={`scn-${i}`}
+              style={[styles.scenery, { left: s.x, top: s.y, fontSize: s.size }]}
+            >
+              {s.emoji}
             </Text>
-          </View>
-          <Text style={styles.titleIntro}>{scenario.intro}</Text>
-        </Animated.View>
+          ))}
 
-        {/* Controls — overlay bottom-left D-pad cluster, bottom-right Jump.
-            Use the responder system instead of Pressable: onPressOut on iOS
-            Safari often doesn't fire when the finger drifts off the button,
-            which left the cat "stuck" walking. onResponderRelease /
-            onResponderTerminate together cover all release paths. */}
-        <View style={styles.dpad} pointerEvents="box-none">
-          <View style={styles.dpadRow}>
-            <View style={styles.dpadSpacer} />
-            <DpadButton label="↑" onIn={() => setInput('up', true)} onOut={() => setInput('up', false)} />
-            <View style={styles.dpadSpacer} />
-          </View>
-          <View style={styles.dpadRow}>
-            <DpadButton label="←" onIn={() => setInput('left', true)} onOut={() => setInput('left', false)} />
-            <View style={styles.dpadSpacer} />
-            <DpadButton label="→" onIn={() => setInput('right', true)} onOut={() => setInput('right', false)} />
-          </View>
-          <View style={styles.dpadRow}>
-            <View style={styles.dpadSpacer} />
-            <DpadButton label="↓" onIn={() => setInput('down', true)} onOut={() => setInput('down', false)} />
-            <View style={styles.dpadSpacer} />
-          </View>
+          {obstacles.map((o, i) => (
+            <Text
+              key={`obs-${round}-${i}`}
+              style={[
+                styles.obstacle,
+                {
+                  left: o.x - o.size / 2,
+                  top: o.y - o.size / 2,
+                  fontSize: o.size,
+                },
+              ]}
+            >
+              {scenario.obstacle.emoji}
+            </Text>
+          ))}
+
+          {tiles.map(p => (
+            <AdventureTile
+              key={`${round}-${p.item.id}`}
+              placed={p}
+              worldW={worldW}
+              worldH={worldH}
+              shake={shakeId === p.item.id}
+            />
+          ))}
+
+          <Animated.View style={[styles.cat, catStyle]}>
+            <Text style={styles.catEmoji}>🐱</Text>
+          </Animated.View>
+
+          <Animated.View style={[styles.titleWrap, titleStyle]}>
+            <View style={styles.titleRow}>
+              <Text style={styles.titleEmoji}>{scenario.emoji}</Text>
+              <Text style={styles.titleText}>
+                World {round + 1} · {scenario.name}
+              </Text>
+            </View>
+            <Text style={styles.titleIntro}>{scenario.intro}</Text>
+          </Animated.View>
         </View>
 
-        <View
-          style={styles.jumpBtn}
-          accessibilityLabel="Jump"
-          onStartShouldSetResponder={() => true}
-          onResponderGrant={requestJump}
-          onResponderTerminationRequest={() => false}
-        >
-          <Text style={styles.jumpEmoji}>⬆</Text>
-          <Text style={styles.jumpLabel}>Jump</Text>
+        {/* Controls overlay — same rect as the world, transparent, on top.
+            box-none lets touches pass through the empty middle and only
+            land on the actual buttons. */}
+        <View style={styles.controlsLayer} pointerEvents="box-none">
+          <View style={styles.dpad} pointerEvents="box-none">
+            <View style={styles.dpadRow}>
+              <View style={styles.dpadSpacer} />
+              <DpadButton label="↑" onIn={() => setInput('up', true)} onOut={() => setInput('up', false)} />
+              <View style={styles.dpadSpacer} />
+            </View>
+            <View style={styles.dpadRow}>
+              <DpadButton label="←" onIn={() => setInput('left', true)} onOut={() => setInput('left', false)} />
+              <View style={styles.dpadSpacer} />
+              <DpadButton label="→" onIn={() => setInput('right', true)} onOut={() => setInput('right', false)} />
+            </View>
+            <View style={styles.dpadRow}>
+              <View style={styles.dpadSpacer} />
+              <DpadButton label="↓" onIn={() => setInput('down', true)} onOut={() => setInput('down', false)} />
+              <View style={styles.dpadSpacer} />
+            </View>
+          </View>
+
+          <View
+            style={styles.jumpBtn}
+            accessibilityLabel="Jump"
+            onStartShouldSetResponder={() => true}
+            onResponderGrant={requestJump}
+            onResponderTerminationRequest={() => false}
+          >
+            <Text style={styles.jumpEmoji}>⬆</Text>
+            <Text style={styles.jumpLabel}>Jump</Text>
+          </View>
         </View>
       </View>
     </View>
@@ -529,11 +554,34 @@ function placeScenery(scenario: Scenario, worldW: number, worldH: number) {
   return result;
 }
 
-function placeObstacle(scenario: Scenario, worldW: number, worldH: number) {
-  const angle = Math.random() * Math.PI * 2;
-  const fx = clamp(0.5 + Math.cos(angle) * 0.18, 0.20, 0.80);
-  const fy = clamp(0.5 + Math.sin(angle) * 0.10 * (worldW / worldH), 0.25, 0.75);
-  return { x: fx * worldW, y: fy * worldH, size: scenario.obstacle.size };
+/**
+ * Two obstacles per scene placed roughly between the cat (centre) and the
+ * tiles, so the player has to navigate around (or jump over) at least one
+ * to reach a tile. We try several random spots and keep ones that don't
+ * sit on top of the cat-start or another obstacle.
+ */
+function placeObstacles(scenario: Scenario, worldW: number, worldH: number) {
+  const out: { x: number; y: number; size: number }[] = [];
+  const want = 2;
+  const minSepFromCat = (CAT_SIZE / 2 + scenario.obstacle.size / 2 + 32);
+  const minSepBetween = (scenario.obstacle.size + 40);
+  const cx = worldW / 2;
+  const cy = worldH / 2;
+  let tries = 0;
+  while (out.length < want && tries < 200) {
+    tries++;
+    const angle = Math.random() * Math.PI * 2;
+    // Ring radius — far enough to be on a path, not at the edges.
+    const r = 0.18 + Math.random() * 0.18;
+    const fx = clamp(0.5 + Math.cos(angle) * r, 0.18, 0.82);
+    const fy = clamp(0.5 + Math.sin(angle) * r * (worldW / worldH), 0.22, 0.78);
+    const x = fx * worldW;
+    const y = fy * worldH;
+    if (Math.hypot(x - cx, y - cy) < minSepFromCat) continue;
+    if (out.some(o => Math.hypot(o.x - x, o.y - y) < minSepBetween)) continue;
+    out.push({ x, y, size: scenario.obstacle.size });
+  }
+  return out;
 }
 
 function shuffleInPlace<T>(arr: T[]): void {
@@ -606,12 +654,19 @@ const styles = StyleSheet.create({
     minWidth: 140,
     textAlign: 'right',
   },
-  world: {
-    backgroundColor: THEME.colors.bgAlt,
-    borderRadius: THEME.radius.card,
+  worldFrame: {
+    position: 'relative',
     overflow: 'hidden',
+    borderRadius: THEME.radius.card,
     borderWidth: 2,
     borderColor: THEME.colors.cardBorder,
+    backgroundColor: THEME.colors.bgAlt,
+  },
+  worldFill: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  controlsLayer: {
+    ...StyleSheet.absoluteFillObject,
   },
   scenery: { position: 'absolute', opacity: 0.55 },
   obstacle: {
