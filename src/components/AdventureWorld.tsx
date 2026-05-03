@@ -75,10 +75,11 @@ interface Inputs {
  */
 export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
   const { width, height } = useWindowDimensions();
-  const headerH = 96;
-  const controlsH = 120;
-  const worldH = Math.max(280, height - headerH - controlsH - 28);
-  const worldW = Math.min(width - 32, 1200);
+  // Controls overlay the world (absolute), so the world fills all the height
+  // not eaten by the header. No more vertical overflow.
+  const headerH = 88;
+  const worldH = Math.max(360, height - headerH - 24);
+  const worldW = Math.min(width - 32, 1400);
 
   const pool = useMemo(() => level.vocabIds.map(getVocab), [level]);
 
@@ -324,15 +325,17 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
         <Text style={styles.hint}>Use the arrows · Jump to leap</Text>
       </View>
 
-      {/* World */}
+      {/* World — controls are absolutely positioned children so the layout
+          always fits regardless of viewport height. */}
       <View
         style={[styles.world, { width: worldW, height: worldH, backgroundColor: scenario.bg }]}
-        pointerEvents="none"
+        pointerEvents="box-none"
       >
         {scenery.map((s, i) => (
           <Text
             key={`scn-${i}`}
             style={[styles.scenery, { left: s.x, top: s.y, fontSize: s.size }]}
+            pointerEvents="none"
           >
             {s.emoji}
           </Text>
@@ -347,6 +350,7 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
               fontSize: obstacle.size,
             },
           ]}
+          pointerEvents="none"
         >
           {scenario.obstacle.emoji}
         </Text>
@@ -361,19 +365,21 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
           />
         ))}
 
-        <Animated.View style={[styles.cat, catStyle]}>
+        <Animated.View style={[styles.cat, catStyle]} pointerEvents="none">
           <Text style={styles.catEmoji}>🐱</Text>
         </Animated.View>
 
-        <Animated.View style={[styles.titleWrap, titleStyle]}>
+        <Animated.View style={[styles.titleWrap, titleStyle]} pointerEvents="none">
           <Text style={styles.titleEmoji}>{scenario.emoji}</Text>
           <Text style={styles.titleText}>{scenario.name}</Text>
         </Animated.View>
-      </View>
 
-      {/* Controls — D-pad on left, Jump on right */}
-      <View style={[styles.controls, { width: worldW }]}>
-        <View style={styles.dpad}>
+        {/* Controls — overlay bottom-left D-pad cluster, bottom-right Jump.
+            Use the responder system instead of Pressable: onPressOut on iOS
+            Safari often doesn't fire when the finger drifts off the button,
+            which left the cat "stuck" walking. onResponderRelease /
+            onResponderTerminate together cover all release paths. */}
+        <View style={styles.dpad} pointerEvents="box-none">
           <View style={styles.dpadRow}>
             <View style={styles.dpadSpacer} />
             <DpadButton label="↑" onIn={() => setInput('up', true)} onOut={() => setInput('up', false)} />
@@ -391,35 +397,40 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
           </View>
         </View>
 
-        <Pressable
-          onPress={requestJump}
+        <View
+          style={styles.jumpBtn}
           accessibilityLabel="Jump"
-          style={({ pressed }) => [
-            styles.jumpBtn,
-            { transform: [{ scale: pressed ? 0.94 : 1 }] },
-          ]}
+          onStartShouldSetResponder={() => true}
+          onResponderGrant={requestJump}
+          onResponderTerminationRequest={() => false}
         >
           <Text style={styles.jumpEmoji}>⬆</Text>
           <Text style={styles.jumpLabel}>Jump</Text>
-        </Pressable>
+        </View>
       </View>
     </View>
   );
 }
 
 function DpadButton({ label, onIn, onOut }: { label: string; onIn: () => void; onOut: () => void }) {
+  const [pressed, setPressed] = useState(false);
+  const grant = () => { setPressed(true); onIn(); };
+  const release = () => { setPressed(false); onOut(); };
   return (
-    <Pressable
-      onPressIn={onIn}
-      onPressOut={onOut}
+    <View
       accessibilityLabel={`Move ${label}`}
-      style={({ pressed }) => [
+      onStartShouldSetResponder={() => true}
+      onResponderGrant={grant}
+      onResponderRelease={release}
+      onResponderTerminate={release}
+      onResponderTerminationRequest={() => false}
+      style={[
         styles.dpadBtn,
         pressed && { transform: [{ scale: 0.93 }], backgroundColor: THEME.colors.accent },
       ]}
     >
-      <Text style={styles.dpadLabel}>{label}</Text>
-    </Pressable>
+      <Text style={[styles.dpadLabel, pressed && { color: '#fff' }]}>{label}</Text>
+    </View>
   );
 }
 
@@ -477,9 +488,10 @@ function placeTiles(pool: VocabItem[], target: VocabItem, worldW: number, worldH
     while (attempt < 80) {
       attempt++;
       const angle = (i / items.length) * Math.PI * 2 + (Math.random() - 0.5) * 0.6;
-      const radius = 0.32 + Math.random() * 0.12;
-      const fx = clamp(cx + Math.cos(angle) * radius, 0.10, 0.90);
-      const fy = clamp(cy + Math.sin(angle) * radius * (worldW / worldH), 0.16, 0.84);
+      const radius = 0.30 + Math.random() * 0.12;
+      const fx = clamp(cx + Math.cos(angle) * radius, 0.12, 0.88);
+      // Keep tiles out of the bottom corners where the D-pad and Jump button sit.
+      const fy = clamp(cy + Math.sin(angle) * radius * (worldW / worldH), 0.16, 0.74);
       const ok = placed.every(p => Math.hypot((p.fx - fx) * worldW, (p.fy - fy) * worldH) > TILE_SIZE * 1.2);
       if (ok) { placed.push({ item: items[i], fx, fy }); break; }
       if (attempt === 80) placed.push({ item: items[i], fx, fy });
@@ -652,24 +664,22 @@ const styles = StyleSheet.create({
   },
   catEmoji: { fontSize: 76, lineHeight: 84 },
 
-  /* ─ Controls ─ */
-  controls: {
-    flexDirection: 'row',
+  /* ─ Controls — absolutely positioned overlays inside the world rect ─ */
+  dpad: {
+    position: 'absolute',
+    left: 18,
+    bottom: 18,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: THEME.spacing.xl,
-    paddingTop: THEME.spacing.sm,
   },
-  dpad: { alignItems: 'center' },
   dpadRow: { flexDirection: 'row' },
   dpadBtn: {
     width: DPAD_BTN_SIZE,
     height: DPAD_BTN_SIZE,
     margin: 4,
     borderRadius: 14,
-    backgroundColor: THEME.colors.card,
+    backgroundColor: 'rgba(255,255,255,0.92)',
     borderWidth: 2,
-    borderColor: THEME.colors.cardBorder,
+    borderColor: 'rgba(60,40,10,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -677,22 +687,30 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.10,
     shadowRadius: 8,
     elevation: 4,
+    // Disable native gestures (scroll/zoom on web Safari) on touch.
+    touchAction: 'none',
+    userSelect: 'none',
   },
-  dpadLabel: { fontSize: 28, fontWeight: '800', color: THEME.colors.text },
+  dpadLabel: { fontSize: 26, fontWeight: '800', color: THEME.colors.text },
   dpadSpacer: { width: DPAD_BTN_SIZE + 8, height: DPAD_BTN_SIZE + 8 },
   jumpBtn: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    position: 'absolute',
+    right: 24,
+    bottom: 28,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     backgroundColor: THEME.colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.18,
+    shadowOpacity: 0.20,
     shadowRadius: 12,
     elevation: 8,
+    touchAction: 'none',
+    userSelect: 'none',
   },
-  jumpEmoji: { fontSize: 36, color: '#fff', lineHeight: 42 },
+  jumpEmoji: { fontSize: 34, color: '#fff', lineHeight: 38 },
   jumpLabel: { fontSize: 14, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
 });
