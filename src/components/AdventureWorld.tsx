@@ -39,14 +39,23 @@ interface Scenario {
   scenery: string[];
   sceneryCount: number;
   obstacle: { emoji: string; size: number };
+  /** One-line narrative beat shown under the scenario title at round start. */
+  intro: string;
 }
 
+/**
+ * Fixed-order journey — like Mario worlds 1→5. The cat walks from a
+ * forest at dawn through meadow, beach, snowfield, and ends under
+ * starry night. Order matters: it's a story, not a shuffle. There are
+ * exactly ADVENTURE_ROUNDS_PER_SESSION (5) entries; round N uses
+ * SCENARIOS[N].
+ */
 const SCENARIOS: Scenario[] = [
-  { id: 'forest', name: 'Forest',       emoji: '🌲', bg: '#E5EFD7', scenery: ['🌳', '🌲', '🌿', '🍄'], sceneryCount: 14, obstacle: { emoji: '🪵', size: 64 } },
-  { id: 'meadow', name: 'Meadow',       emoji: '🌼', bg: '#FBF3CC', scenery: ['🌼', '🌸', '🌾', '🦋'], sceneryCount: 16, obstacle: { emoji: '🪨', size: 54 } },
-  { id: 'beach',  name: 'Beach',        emoji: '🏖️', bg: '#FCE3A8', scenery: ['🐚', '⭐', '🌴', '🪸'], sceneryCount: 12, obstacle: { emoji: '🪨', size: 56 } },
-  { id: 'snow',   name: 'Snowfield',    emoji: '❄️', bg: '#E0ECF3', scenery: ['❄️', '🌨️', '🌲', '🐧'], sceneryCount: 16, obstacle: { emoji: '⛄', size: 64 } },
-  { id: 'night',  name: 'Starry Night', emoji: '🌙', bg: '#D7D2EE', scenery: ['⭐', '✨', '🌙', '🦉'], sceneryCount: 14, obstacle: { emoji: '🪨', size: 50 } },
+  { id: 'forest', name: 'Forest',       emoji: '🌲', bg: '#E5EFD7', scenery: ['🌳', '🌲', '🌿', '🍄'], sceneryCount: 14, obstacle: { emoji: '🪵', size: 64 }, intro: 'The cat starts in a quiet forest…' },
+  { id: 'meadow', name: 'Meadow',       emoji: '🌼', bg: '#FBF3CC', scenery: ['🌼', '🌸', '🌾', '🦋'], sceneryCount: 16, obstacle: { emoji: '🪨', size: 54 }, intro: 'Out into the sunny meadow…' },
+  { id: 'beach',  name: 'Beach',        emoji: '🏖️', bg: '#FCE3A8', scenery: ['🐚', '⭐', '🌴', '🪸'], sceneryCount: 12, obstacle: { emoji: '🪨', size: 56 }, intro: 'Down to the warm sandy beach…' },
+  { id: 'snow',   name: 'Snowfield',    emoji: '❄️', bg: '#E0ECF3', scenery: ['❄️', '🌨️', '🌲', '🐧'], sceneryCount: 16, obstacle: { emoji: '⛄', size: 64 }, intro: 'Into the cold snowy fields…' },
+  { id: 'night',  name: 'Starry Night', emoji: '🌙', bg: '#D7D2EE', scenery: ['⭐', '✨', '🌙', '🦉'], sceneryCount: 14, obstacle: { emoji: '🪨', size: 50 }, intro: 'Home at last under the stars.' },
 ];
 
 const CAT_SIZE = 88;
@@ -84,7 +93,9 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
   const pool = useMemo(() => level.vocabIds.map(getVocab), [level]);
 
   const [round, setRound] = useState(0);
-  const [scenario, setScenario] = useState<Scenario>(() => SCENARIOS[Math.floor(Math.random() * SCENARIOS.length)]);
+  // Scenario is a function of round — Forest first, then Meadow, then Beach,
+  // Snowfield, Starry Night. Like Mario worlds 1→5 (a journey, not a shuffle).
+  const scenario = SCENARIOS[Math.min(round, SCENARIOS.length - 1)];
   const [target, setTarget] = useState<VocabItem>(() => pickTarget(pool, []));
   const [tiles, setTiles] = useState<PlacedTile[]>(() => placeTiles(pool, target, worldW, worldH));
   const [scenery, setScenery] = useState(() => placeScenery(scenario, worldW, worldH));
@@ -93,7 +104,6 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
   const [shakeId, setShakeId] = useState<string | null>(null);
   const wrongTriesRef = useRef(false);
   const lastTargetIdsRef = useRef<string[]>([target.id]);
-  const lastScenarioIdRef = useRef<string>(scenario.id);
 
   const startX = worldW / 2 - CAT_SIZE / 2;
   const startY = worldH / 2 - CAT_SIZE / 2;
@@ -275,10 +285,10 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
     }
     const nextTarget = pickTarget(pool, lastTargetIdsRef.current);
     lastTargetIdsRef.current = [...lastTargetIdsRef.current.slice(-3), nextTarget.id];
-    const nextScenario = pickScenario(lastScenarioIdRef.current);
-    lastScenarioIdRef.current = nextScenario.id;
+    // Next scenario is dictated by the journey order (round → SCENARIOS[round]),
+    // computed by the render — no scenario state to update here.
+    const nextScenario = SCENARIOS[Math.min(nextRound, SCENARIOS.length - 1)];
     setRound(nextRound);
-    setScenario(nextScenario);
     setTarget(nextTarget);
     setTiles(placeTiles(pool, nextTarget, worldW, worldH));
     setScenery(placeScenery(nextScenario, worldW, worldH));
@@ -370,8 +380,13 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
         </Animated.View>
 
         <Animated.View style={[styles.titleWrap, titleStyle]} pointerEvents="none">
-          <Text style={styles.titleEmoji}>{scenario.emoji}</Text>
-          <Text style={styles.titleText}>{scenario.name}</Text>
+          <View style={styles.titleRow}>
+            <Text style={styles.titleEmoji}>{scenario.emoji}</Text>
+            <Text style={styles.titleText}>
+              World {round + 1} · {scenario.name}
+            </Text>
+          </View>
+          <Text style={styles.titleIntro}>{scenario.intro}</Text>
         </Animated.View>
 
         {/* Controls — overlay bottom-left D-pad cluster, bottom-right Jump.
@@ -521,11 +536,6 @@ function placeObstacle(scenario: Scenario, worldW: number, worldH: number) {
   return { x: fx * worldW, y: fy * worldH, size: scenario.obstacle.size };
 }
 
-function pickScenario(prevId: string): Scenario {
-  const others = SCENARIOS.filter(s => s.id !== prevId);
-  return others[Math.floor(Math.random() * others.length)];
-}
-
 function shuffleInPlace<T>(arr: T[]): void {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -613,23 +623,38 @@ const styles = StyleSheet.create({
   },
   titleWrap: {
     position: 'absolute',
-    top: 28,
+    top: 24,
     left: 0,
     right: 0,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  titleRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 12,
   },
-  titleEmoji: { fontSize: 38 },
+  titleEmoji: { fontSize: 36 },
   titleText: {
-    fontSize: 32,
+    fontSize: 30,
     fontWeight: '800',
     color: THEME.colors.text,
     letterSpacing: -0.5,
-    backgroundColor: 'rgba(255,255,255,0.7)',
+    backgroundColor: 'rgba(255,255,255,0.78)',
     paddingHorizontal: 18,
     paddingVertical: 6,
+    borderRadius: THEME.radius.pill,
+    overflow: 'hidden',
+  },
+  titleIntro: {
+    marginTop: 8,
+    fontSize: 16,
+    fontWeight: '500',
+    color: THEME.colors.text,
+    fontStyle: 'italic',
+    backgroundColor: 'rgba(255,255,255,0.65)',
+    paddingHorizontal: 14,
+    paddingVertical: 4,
     borderRadius: THEME.radius.pill,
     overflow: 'hidden',
   },
