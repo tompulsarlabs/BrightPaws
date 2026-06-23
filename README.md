@@ -3,7 +3,7 @@
 A touch-based English-learning game for Margaux (age 7) on iPad.
 
 ## Context
-- Margaux is 7. Native German (primary) and French (dad). Lives mostly with mum + Tom; English exposure is daily but she lacks speaking confidence.
+- Margaux is 7. Native German (native, primary) and French (native, secondary). Lives mostly with mum + stepdad (Tom); English exposure is daily but she lacks speaking confidence.
 - Goal: get her speaking-fluent in English BEFORE she turns 8, while the innate language-acquisition window is still wide open. Aim for near-native capability.
 - Constraint: this is iPad screen time. Sessions should naturally cap at ~30 minutes. Replay loop must be strong enough that she chooses it over passive screen time, but not addictive.
 
