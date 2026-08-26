@@ -76,7 +76,7 @@ function Game() {
   // level feel continuous across launches).
   useEffect(() => {
     loadLastLevelId().then(id => {
-      // Just for warmth — doesn't auto-start; she still picks via LevelSelect.
+      // Just for warmth — doesn't auto-start; the learner still picks via LevelSelect.
       if (id) { /* no-op for v0.2; could prefocus the card later */ }
     });
   }, []);

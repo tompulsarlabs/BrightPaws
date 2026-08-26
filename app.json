@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Margaux EN Tutor",
-    "slug": "margo-en-tutor",
+    "name": "BrightPaws English",
+    "slug": "brightpaws-english",
     "version": "0.1.0",
     "orientation": "landscape",
     "icon": "./assets/images/icon.png",
-    "scheme": "margoentutor",
+    "scheme": "brightpawsenglish",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
@@ -44,7 +44,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Tap-to-repeat lets Margaux hear herself say the words."
+          "microphonePermission": "Tap-to-repeat lets learners hear themselves say the words."
         }
       ]
     ],

@@ -1,34 +1,34 @@
 # Distribution
 
 Two-track:
-- **Expo Go** for fast local iteration (Tom dev, no signing, QR scan).
-- **EAS Build → TestFlight** for Margaux's iPad (must feel "real", not dev-mode).
+- **Expo Go** for fast local iteration without signing.
+- **EAS Build → TestFlight** for testing on a learner's iPad outside development mode.
 
-This document is the TestFlight setup plan. Not done in this session — needs an Apple Developer account and external steps Tom must complete.
+This document is the TestFlight setup plan. It requires an Apple Developer account and several external setup steps.
 
 ---
 
-## What Tom needs to do externally (one-time)
+## External setup (one-time)
 
 ### 1. Apple Developer Program ($99/yr)
-- Sign in at https://developer.apple.com with the Apple ID Tom wants tied to the app.
+- Sign in at https://developer.apple.com with the Apple ID that should own the app.
 - Enrol in the Apple Developer Program. Individual enrolment is fine — no LLC required.
 - Wait for approval (typically 24–48h).
 
 ### 2. App Store Connect record
 - After enrolment, go to https://appstoreconnect.apple.com.
 - "My Apps" → "+" → "New App".
-- Platform: iOS. Name: "Margaux EN Tutor". Bundle ID: create new, suggested `ai.tomgreen.margauxentutor` (or whatever Tom prefers — must be globally unique).
-- Primary language: English. SKU: anything stable, e.g. `margauxentutor-001`.
+- Platform: iOS. Name: "BrightPaws English". Create a globally unique bundle ID, such as `com.example.brightpawsenglish` with `example` replaced by the developer's domain or organization.
+- Primary language: English. Use any stable SKU, such as `brightpaws-english-001`.
 
-### 3. Margaux's iPad as a TestFlight tester
-- Margaux's Apple ID needs to exist (for under-13s in EU, this is a Family Sharing child Apple ID — Tom likely already set this up).
-- In App Store Connect → TestFlight → Internal Testing → add Tom's Apple ID first (verify the build works for Tom).
-- Then external testing: invite Margaux's Apple ID by email. She gets a TestFlight invite link, opens TestFlight on her iPad, accepts.
+### 3. Add an iPad as a TestFlight tester
+- The learner needs an Apple ID that can use TestFlight. For children, this may be a Family Sharing child account, subject to local age rules and parental controls.
+- In App Store Connect → TestFlight → Internal Testing, add a developer account first and verify the build.
+- For external testing, invite the tester's Apple ID by email. The tester opens the invite link on the iPad and accepts it in TestFlight.
 
 ---
 
-## What Claude (or Tom) does in-repo
+## In-repository setup
 
 ### 1. EAS CLI
 ```sh
@@ -47,7 +47,7 @@ This generates `eas.json` with default `development`, `preview`, `production` pr
 ### 3. Set the bundle identifier
 In `app.json`, add under `ios`:
 ```json
-"bundleIdentifier": "ai.tomgreen.margauxentutor"
+"bundleIdentifier": "com.example.brightpawsenglish"
 ```
 Match this exactly to the bundle ID created in App Store Connect.
 
@@ -63,16 +63,16 @@ Build runs on EAS servers (~15–25 min). When done, the build output URL gives 
 ```sh
 eas submit --platform ios --latest
 ```
-Uploads the latest build to App Store Connect. Apple processes it for ~10–30 min, then it appears in TestFlight. Internal testers (Tom) get it immediately. External testers (Margaux) get it after a brief Beta App Review (usually under 24h, often same-day for an established account).
+Uploads the latest build to App Store Connect. After processing, it appears in TestFlight. Internal testers can access it first; external testing may require Beta App Review.
 
 ### 6. Iteration loop
 - Make changes locally, test in Expo Go (`npx expo start`, scan QR).
-- When ready to push to Margaux: bump `expo.version` (or `expo.ios.buildNumber`), run `eas build` + `eas submit`.
-- TestFlight on her iPad notifies her of the update.
+- When ready to share an update, bump `expo.version` (or `expo.ios.buildNumber`), then run `eas build` and `eas submit`.
+- TestFlight notifies testers when the update is available.
 
 ---
 
 ## Open considerations
 - **Push notifications:** not needed for v0. If we add daily nudges later ("ready for today's English game?"), need APNs setup via EAS — additional config, deferred.
 - **Privacy manifest:** Apple now requires `PrivacyInfo.xcprivacy` declarations for SDKs that read certain APIs. Expo SDK 54+ handles most of this automatically. Verify before first submit.
-- **Family Sharing under-13 quirks:** child Apple IDs sometimes have download restrictions. If Margaux can't accept the TestFlight invite, check Screen Time → Content & Privacy Restrictions → Installing Apps.
+- **Family Sharing and child accounts:** child Apple IDs may have download restrictions. If a learner cannot accept the TestFlight invite, check Screen Time → Content & Privacy Restrictions → Installing Apps.

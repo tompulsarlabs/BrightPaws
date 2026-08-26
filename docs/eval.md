@@ -1,8 +1,8 @@
-# eval.md — Margaux EN Tutor
+# eval.md — BrightPaws English
 
 ## Purpose
 
-This file defines how we measure whether Margaux is a *good English tutor*, and the
+This file defines how we measure whether BrightPaws is a *good English tutor*, and the
 process by which the product improves over time. The file itself improves nothing —
 the **loop** below does. `eval.md` is the contract that loop runs against.
 
@@ -29,7 +29,7 @@ If you do nothing else, do steps 3–5 every time something looks wrong in the w
 ## What we evaluate
 
 **Unit under test:** a single tutor turn — the learner's message (+ session context)
-in, Margaux's reply out.  <!-- ADJUST: if /brief generated lesson briefs are the main surface, add a second suite that evaluates brief generation -->
+in, the tutor's reply out.  <!-- ADJUST: if /brief generated lesson briefs are the main surface, add a second suite that evaluates brief generation -->
 
 **Context each case carries:** learner CEFR level (A1–C2), the lesson brief/objective,
 and the domain register.  <!-- ADJUST: domain inferred as barista / café-service English — confirm or change -->
@@ -110,7 +110,7 @@ programmatic checks + an LLM judge against the rubric, and writes a report to
 
 ## For the coding agent (Claude Code / Cursor)
 
-When asked to *improve Margaux*, follow this procedure exactly:
+When asked to *improve BrightPaws*, follow this procedure exactly:
 
 1. Pull the last N flagged / low-rated sessions from the usage store.  <!-- ADJUST source -->
 2. For each genuine failure, write a minimal case in `evals/cases/` that reproduces it.
