@@ -29,9 +29,9 @@ interface Props {
 }
 
 /**
- * Voice option B per Tom's pick: tap to record (auto-stops at 3s), then
- * auto-plays back so she hears herself. No grading, no STT, no mic
- * permission unless she actually presses the button.
+ * Tap to record (auto-stops at 3s), then auto-play the clip so the learner
+ * can hear their own voice. No grading, no STT, and no microphone permission
+ * request until the learner presses the button.
  */
 export function RepeatButton({ resetKey }: Props) {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);

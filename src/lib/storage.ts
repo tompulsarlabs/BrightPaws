@@ -1,10 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const KEY_COINS_TOTAL = '@margo/coins.total';
-const KEY_DAILY_PLAY_PREFIX = '@margo/play.';
-const KEY_DAILY_TARGET_HIT_PREFIX = '@margo/dailyTargetHit.';
-const KEY_LEVEL_MASTERY_PREFIX = '@margo/level.mastery.';
-const KEY_LAST_LEVEL = '@margo/level.last';
+const KEY_COINS_TOTAL = '@brightpaws/coins.total';
+const KEY_DAILY_PLAY_PREFIX = '@brightpaws/play.';
+const KEY_DAILY_TARGET_HIT_PREFIX = '@brightpaws/dailyTargetHit.';
+const KEY_LEVEL_MASTERY_PREFIX = '@brightpaws/level.mastery.';
+const KEY_LAST_LEVEL = '@brightpaws/level.last';
 
 export async function loadCoinsTotal(): Promise<number> {
   const raw = await AsyncStorage.getItem(KEY_COINS_TOTAL);

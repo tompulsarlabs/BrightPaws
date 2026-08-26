@@ -252,7 +252,7 @@ export function AdventureWorld({ level, onAward, onSessionComplete }: Props) {
         walkPhaseRef.current += 0.32;
         walkBob.value = Math.sin(walkPhaseRef.current) * 4;
       } else {
-        // Quick decay to zero so the cat settles when she stops.
+        // Quick decay to zero so the cat settles when movement stops.
         walkBob.value = walkBob.value * 0.6;
         walkPhaseRef.current = 0;
       }

@@ -9,7 +9,7 @@ interface Props {
 
 /**
  * Soft 30-minute nudge. Two equal-weight choices: "one more round" vs
- * "all done". No countdown timer that auto-dismisses; she controls it.
+ * "all done". No countdown timer that auto-dismisses; the learner controls it.
  *
  * Plain Views, no reanimated entering — same fix as GameTile.
  */

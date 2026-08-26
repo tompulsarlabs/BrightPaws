@@ -1,5 +1,5 @@
 /**
- * v0 content pack — Margaux EN Tutor
+ * v0 content pack — BrightPaws English
  *
  * Single source of truth for the prototype: vocabulary, level structure,
  * theme tokens, copy strings. Swap this file (or fields within it) without
@@ -36,9 +36,8 @@ export interface VocabItem {
 
 /**
  * Master vocabulary. Levels (below) cherry-pick from this list by id.
- * Every word here is high-frequency English appropriate for a 7-year-old
- * with daily passive English exposure. Distinct emoji per word so a tile
- * grid is visually unambiguous.
+ * Every word here is high-frequency English appropriate for an early learner.
+ * Distinct emoji per word keep the tile grid visually unambiguous.
  */
 export const VOCAB: VocabItem[] = [
   // Level 1 set — ten very high-frequency nouns.
@@ -55,7 +54,7 @@ export const VOCAB: VocabItem[] = [
   { id: 'ball',    en: 'ball',    de: 'Ball',   family: 'cat',       art: { type: 'emoji', value: '⚽' } },
   { id: 'book',    en: 'book',    de: 'Buch',   family: 'world',     art: { type: 'emoji', value: '📖' } },
 
-  // Level 2 set — more animals (Tom asked for these) + a few more objects.
+  // Level 2 set — more animals and a few more objects.
   { id: 'bear',    en: 'bear',    de: 'Bär',     family: 'forest',    art: { type: 'emoji', value: '🐻' } },
   { id: 'fox',     en: 'fox',     de: 'Fuchs',   family: 'forest',    art: { type: 'emoji', value: '🦊' } },
   { id: 'rabbit',  en: 'rabbit',  de: 'Hase',    family: 'forest',    art: { type: 'emoji', value: '🐰' } },

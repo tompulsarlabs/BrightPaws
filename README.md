@@ -1,60 +1,72 @@
-# Margaux EN Tutor
+# BrightPaws English
 
-A touch-based English-learning game for Margaux (age 7) on iPad.
+A playful, touch-first English-learning game for children on tablets.
 
-## Context
-- Margaux is 7. Native German (native, primary) and French (native, secondary). Lives mostly with mum + stepdad (Tom); English exposure is daily but she lacks speaking confidence.
-- Goal: get her speaking-fluent in English BEFORE she turns 8, while the innate language-acquisition window is still wide open. Aim for near-native capability.
-- Constraint: this is iPad screen time. Sessions should naturally cap at ~30 minutes. Replay loop must be strong enough that she chooses it over passive screen time, but not addictive.
+## Overview
+
+- **Audience:** children building early English vocabulary, listening skills, and speaking confidence, regardless of their home language.
+- **Goal:** make short, active English practice inviting through pictures, sound, movement, and repetition.
+- **Session design:** play is naturally paced in sessions of about 30 minutes, with a gentle stopping prompt and no addictive or guilt-based mechanics.
+- **Current platform:** Expo (React Native) on iPad, with room to support more devices over time.
 
 ## Stack
-- Expo (React Native) + TypeScript. Locked to iPad landscape (`ios.isTabletOnly`, `orientation: "landscape"`).
-- Distribution: **TestFlight** for Margaux's actual device (must feel "real", not dev-mode). Two-track: Expo Go for fast local iteration, EAS Build → TestFlight for her. Setup deferred — see `docs/distribution.md`.
-- Not native iOS / Swift.
+
+- Expo (React Native) + TypeScript.
+- Optimized for landscape tablet play (`ios.isTabletOnly`, `orientation: "landscape"`).
+- Expo Go supports fast local iteration; EAS Build and TestFlight support device testing. See `docs/distribution.md`.
 
 ## Core mechanics
-- Touch-driven (tap, drag, match, point-to-say). No keyboard.
-- Coin reward economy: completing activities mints "coins". Coins → €/real rewards via a parent-redemption ledger Tom maintains. (e.g. 10 coins = 1 small thing, 100 coins = something bigger.)
-- Voice input: deferred to phase 2.
 
-## Pedagogical decisions (v0)
+- Touch-driven activities: tap, drag, match, explore, and point-to-say. No keyboard required.
+- Picture-and-audio vocabulary practice with repeat-after-me recording.
+- A positive coin economy that can be connected to optional, parent-defined rewards.
+- A visible, child-friendly session timer with a gentle break reminder.
+- Voice recognition is deferred to a later phase; the current recording feature does not grade speech.
 
-These are the deliberate calls baked into v0. Future-Tom / future-Claude: read this before changing them.
+## Learning design
 
-### Bilingual scaffolding: English-only UI, long-press German audio hint
-- **All UI copy and all spoken audio is English.** No German text in the interface.
-- **Long-press an image** → plays a German audio "hint" for that word, sparingly. (Default once per session per word; frequency dial-able.)
-- **Why:** Krashen's "comprehensible input" model — for an already-passively-English-fluent 7-year-old, persistent German scaffolding builds a translation reflex (English → German → meaning) instead of the direct image → English association we want. The long-press hint is an emergency rip-cord so she doesn't disengage when stuck, not a default crutch.
-- Revisit if: she's getting frustrated and disengaging despite the hint, or conversely if she never uses the hint and is breezing through.
+### English-first experience with optional language support
 
-### Coin economy: reward-framed, not pressure-framed
-First principles of incentives, light touch, deepenable over time. Specifically:
-- Coins shown as a **balance** with celebratory framing ("you earned X coins!"), never scarcity ("X to go").
-- **No streak guilt.** No "you'll lose your X" mechanics. No FOMO timers.
-- **Daily soft target** (e.g. 10 coins/day) celebrated when hit, never punished when missed.
+- Regular interface copy and spoken prompts are in English.
+- Long-pressing an image can play a short home-language clue. The v0 content pack includes German clues as a starter localization, and other languages can be added or substituted.
+- The clue is an optional fallback rather than a required step, helping learners connect an image directly with its English word.
+- Language support should be adapted when it causes frustration, is unnecessary, or does not match a learner's needs.
 
-### Session cap: soft, visible, delightful
-- Visible elapsed-time indicator (e.g. a sun crossing the sky, a cat shape filling up).
-- At 30 minutes cumulative same-day play: soft "great session, let's stretch your eyes" prompt with a "play one more round" escape hatch. **No hard lockout.** Easy to flip later if needed.
+### Encouragement without pressure
 
-### Theme: cats + sausage dogs + Grogu (placeholder)
-- Cats are the primary character family. Sausage dogs (dachshunds) and Grogu are recurring side characters.
-- Grogu = Disney/Lucasfilm IP. For private TestFlight (Tom + family), this is fine. If scope ever expands, Grogu must be swapped for a Grogu-inspired original. See `IP-NOTES.md`.
-- All theme content lives in `content/v0.ts`. Asset pipeline lets Tom drop in his own art / commissioned art / image-gen output without touching app code.
+- Coins are shown as a balance with celebratory framing such as “You earned 5 coins!”
+- There are no streak penalties, scarcity messages, or fear-of-missing-out timers.
+- A daily target can be celebrated when reached and is never punished when missed.
 
-## Stretch curricular concepts (optional, layered subtly)
-- Basic compounding (saving coins grows interest)
-- Simple investing analogues (spend now vs save and earn more)
-- Light "calculus-flavored" intuition (rates, growth) — conceptual only, no symbols
+### Gentle session limits
 
-## Open questions — RESOLVED 2026-05-02
-1. ~~**Voice recognition**~~ → **Phase 2.** No STT in v0.
-2. ~~**Distribution**~~ → **TestFlight** (with Expo Go for dev iteration). See `docs/distribution.md`.
-3. ~~**Theme / character**~~ → **Cats + sausage dogs + Grogu** (placeholder); swappable via `content/v0.ts`. IP caveat in `IP-NOTES.md`.
-4. ~~**Coin visibility**~~ → **In-app, reward-framed.** See "Pedagogical decisions" above.
-5. ~~**Bilingual scaffolding**~~ → **English-only UI + long-press German audio hint.** Rationale above.
-6. ~~**Sessions cap**~~ → **Soft, visible, delightful timer.** No hard lockout.
+- A visual indicator shows elapsed play time.
+- At 30 minutes of cumulative daily play, the app suggests an eye break and offers a “one more round” option.
+- There is no hard lockout in the current version.
+
+### Friendly, replaceable theme
+
+- Cats and dachshunds are the primary character families.
+- Grogu is currently a private-development placeholder and must be replaced with an original character before public distribution. See `IP-NOTES.md`.
+- Theme content lives in `content/v0.ts`, so artwork can be replaced without changing the game logic.
+
+## Optional future concepts
+
+These ideas may be layered in subtly as the curriculum grows:
+
+- Basic saving and compounding
+- Simple spend-now-versus-save choices
+- Age-appropriate intuition about rates and growth, without formal notation
+
+## Current decisions
+
+1. Voice recognition is planned for a later phase; v0 uses ungraded repeat-after-me recording.
+2. Development uses Expo Go, with EAS Build and TestFlight available for device testing.
+3. The animal theme is replaceable through `content/v0.ts`.
+4. Coins are reward-framed and never used to create pressure.
+5. The interface is English-first, with optional home-language audio clues.
+6. The 30-minute session reminder is soft rather than a hard lockout.
 
 ## Status
-- v0 prototype: scaffolded Expo iPad app, single-screen tap-to-match vocab game, AsyncStorage coin balance, soft 30-minute timer, English-only with German long-press hint scaffold. Theme: placeholder cats/dogs/Grogu emoji until Tom drops in real assets.
-- No remote yet. Tom to add GitHub remote when ready.
+
+The v0 prototype includes a landscape tablet app, tap-to-match and exploration activities, persistent coins and level progress, a soft 30-minute timer, English audio, repeat-after-me recording, and optional German audio clues in the starter content pack.
