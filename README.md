@@ -70,3 +70,13 @@ These ideas may be layered in subtly as the curriculum grows:
 ## Status
 
 The v0 prototype includes a landscape tablet app, tap-to-match and exploration activities, persistent coins and level progress, a soft 30-minute timer, English audio, repeat-after-me recording, and optional German audio clues in the starter content pack.
+
+## Licence
+
+Original work owned by Tom Green is proprietary. Commercial reuse requires his
+prior written permission. See [LICENSE](LICENSE). Third-party materials retain their
+own rights and licences; previously granted rights are preserved.
+
+Third-party character assets are excluded from this ownership notice. The licence
+does not clear those rights; see the Grogu placeholder restrictions in
+[IP-NOTES.md](IP-NOTES.md).
