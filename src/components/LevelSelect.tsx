@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { MASTERY_SESSIONS_REQUIRED, THEME } from '../../content/v0';
 import type { LevelState } from '../hooks/useLevels';
 import { t } from '../lib/i18n';
@@ -15,13 +16,24 @@ interface Props {
  * Mastered levels get a check; in-progress show their mastery dots.
  */
 export function LevelSelect({ states, onPick, totalCoins }: Props) {
+  const router = useRouter();
   return (
     <View style={styles.root}>
       <View style={styles.header}>
         <Text style={styles.title}>{t('level_select_title')}</Text>
-        <View style={styles.coinPill}>
-          <Text style={styles.coinIcon}>🪙</Text>
-          <Text style={styles.coinTotal}>{totalCoins}</Text>
+        <View style={styles.headerRight}>
+          <Pressable
+            onPress={() => router.push('/story')}
+            style={({ pressed }) => [styles.storyPill, pressed && { opacity: 0.85 }]}
+            accessibilityLabel="Watch the Margot and Tom story"
+          >
+            <Text style={styles.storyIcon}>🎬</Text>
+            <Text style={styles.storyLabel}>Story</Text>
+          </Pressable>
+          <View style={styles.coinPill}>
+            <Text style={styles.coinIcon}>🪙</Text>
+            <Text style={styles.coinTotal}>{totalCoins}</Text>
+          </View>
         </View>
       </View>
 
@@ -92,6 +104,24 @@ const styles = StyleSheet.create({
     color: THEME.colors.text,
     letterSpacing: -0.5,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: THEME.spacing.sm,
+  },
+  storyPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: THEME.spacing.lg,
+    paddingVertical: THEME.spacing.sm,
+    borderRadius: THEME.radius.pill,
+    backgroundColor: THEME.colors.card,
+    borderWidth: 2,
+    borderColor: THEME.colors.cardBorder,
+  },
+  storyIcon: { fontSize: 22 },
+  storyLabel: { fontSize: 18, fontWeight: '700', color: THEME.colors.text },
   coinPill: {
     flexDirection: 'row',
     alignItems: 'center',
